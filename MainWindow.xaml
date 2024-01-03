@@ -1,12 +1,52 @@
-﻿<UserControl x:Class="AR_Finishings.UserControl1"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:AR_Finishings"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800">
+﻿<Window x:Class="AR_Finishings.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AR Finishings" Height="450" Width="400">
     <Grid>
-            
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="330*"/>
+            <ColumnDefinition Width="7*"/>
+            <ColumnDefinition Width="60*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="10,10,10,10" Grid.ColumnSpan="3">
+            <CheckBox Content="Get Parameters" />
+            <Separator Height="20" />
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Label Content="Select Walls" />
+                <ComboBox Width="250" />
+                <TextBox Text="100" Width="58" ToolTip="H Offset to Ceilings (mm)" />
+            </StackPanel>
+            <Separator Height="10" />
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Label Content="Select Floors" />
+                <ComboBox Width="190" />
+            </StackPanel>
+            <Separator Height="10" />
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Label Content="Select Ceilings" />
+                <ComboBox Width="189" />
+                <TextBox Text="100" Width="51" ToolTip="H Ceilings (mm)" />
+            </StackPanel>
+            <Separator Height="10" />
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Label Content="Select Skirts" />
+                <ComboBox Width="189" />
+                <TextBox Text="100" Width="51" HorizontalAlignment="Right" ToolTip="H Skirts (mm)" />
+            </StackPanel>
+            <Separator Height="20" />
+            <Button Content="RUN" Margin="0,10,0,0" Height="40" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="13,10,0,10" Grid.ColumnSpan="3" Width="375">
+            <CheckBox Content="Set Values for elements" Margin="0,0,10,0" Checked="CheckBox_Checked_1" Height="20" />
+            <CheckBox Content="Set Values for Rooms" Checked="CheckBox_Checked" Height="20" />
+            <Button Content="UPDATE" Width="80" Margin="10,0,0,0" Height="40" />
+        </StackPanel>
     </Grid>
-</UserControl>
+</Window>

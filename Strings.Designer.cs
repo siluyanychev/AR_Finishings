@@ -59,5 +59,32 @@ namespace AR_Finishings {
                 resourceCulture = value;
             }
         }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to An error occurred: .
+        /// </summary>
+        internal static string AnErrorOccurred {
+            get {
+                return ResourceManager.GetString("AnErrorOccurred", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Error.
+        /// </summary>
+        internal static string Error {
+            get {
+                return ResourceManager.GetString("Error", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Select walls.
+        /// </summary>
+        internal static string WallTypes {
+            get {
+                return ResourceManager.GetString("WallTypes", resourceCulture);
+            }
+        }
     }
 }
