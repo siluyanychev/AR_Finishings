@@ -15,37 +15,43 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="10,10,10,10" Grid.ColumnSpan="3">
-            <CheckBox Content="Get Parameters" />
+            <CheckBox Content="Get Parameters" Checked="CheckBox_GetParameters" Unchecked="CheckBox_GetParameters" />
             <Separator Height="20" />
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <Label Content="Select Walls" />
-                <ComboBox Width="250" />
-                <TextBox Text="100" Width="58" ToolTip="H Offset to Ceilings (mm)" />
-            </StackPanel>
-            <Separator Height="10" />
+
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                 <Label Content="Select Floors" />
-                <ComboBox Width="190" />
+                <ComboBox x:Name="selectFloorsComboBox" Width="200" />
+                <Label Content="Offset"  />
+                <TextBox x:Name="floorOffsetTextBox" Text="{Binding FloorsOffset}" Width=" 50" ToolTip="Vertical Offset (mm)" Margin="0,0,0,0" />
             </StackPanel>
             <Separator Height="10" />
+
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                 <Label Content="Select Ceilings" />
-                <ComboBox Width="189" />
-                <TextBox Text="100" Width="51" ToolTip="H Ceilings (mm)" />
+                <ComboBox x:Name="selectCeilingsComboBox" Width="190" />
+                <TextBox x:Name="ceilingsHeightTextBox" Text="{Binding CeilingsHeight}" Width="50" ToolTip="H Ceilings (mm)" />
             </StackPanel>
             <Separator Height="10" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Label Content="Select Walls" />
+                <ComboBox x:Name="selectWallsComboBox" Width="190" />
+                <TextBox x:Name="wallsOffsetTextBox" Text="{Binding WallsOffset}" Width="58" ToolTip="H Offset to Ceilings (mm)" />
+            </StackPanel>
+            <Separator Height="10" />
+
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                 <Label Content="Select Skirts" />
-                <ComboBox Width="189" />
-                <TextBox Text="100" Width="51" HorizontalAlignment="Right" ToolTip="H Skirts (mm)" />
+                <ComboBox x:Name="selectSkirtsComboBox" Width="190" />
+                <TextBox x:Name="skirtsHeightTextBox" Text="{Binding SkirtsHeight}" Width="51" ToolTip="H Skirts (mm)" />
             </StackPanel>
             <Separator Height="20" />
-            <Button Content="RUN" Margin="0,10,0,0" Height="40" />
+            <Button Content="RUN" Click="RunButton_Click" Margin="0,10,0,0" Height="40" />
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="13,10,0,10" Grid.ColumnSpan="3" Width="375">
-            <CheckBox Content="Set Values for elements" Margin="0,0,10,0" Checked="CheckBox_Checked_1" Height="20" />
-            <CheckBox Content="Set Values for Rooms" Checked="CheckBox_Checked" Height="20" />
+            <CheckBox Content="Set Values for elements" Checked="CheckBox_ValsForElements" Unchecked="CheckBox_ValsForElements" />
+            <CheckBox Content="Set Values for Rooms" Checked="CheckBox_ValsForRooms" Unchecked="CheckBox_ValsForRooms" />
             <Button Content="UPDATE" Width="80" Margin="10,0,0,0" Height="40" />
         </StackPanel>
     </Grid>
