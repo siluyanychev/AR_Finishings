@@ -25,9 +25,9 @@ namespace AR_Finishings
         private Document mainDocument;
         private IList<ElementId> _selectedRoomIds;
         // связка из разметки
-        public string FloorsOffset { get; set; } = "0"; // Значение по умолчанию для смещения поола
+        public string FloorsOffset { get; set; } = "0"; // Значение по умолчанию для смещения пола
         public string CeilingsHeight { get; set; } = "3200"; // Значение по умолчанию для высоты потолков
-        public string WallsOffset { get; set; } = "110"; // Значение по умолчанию для отступа стен
+        public string WallsOffset { get; set; } = "110"; // Значение по умолчанию для отступа по высоте стены за потолком 
         public string SkirtsHeight { get; set; } = "80"; // Значение по умолчанию для высоты плинтусов
         private void CheckBox_GetParameters(object sender, RoutedEventArgs e)
         {
