@@ -111,7 +111,7 @@ namespace AR_Finishings
 
             // Используем метод для генерации полов с использованием выбранных параметров
             RoomBoundaryFloorGenerator generator = new RoomBoundaryFloorGenerator(mainDocument);
-            generator.CreateFloors(_selectedRoomIds, selectedFloorType, floorOffset);
+            generator.CreateFloors(_selectedRoomIds, selectedFloorType);
         }
 
     }

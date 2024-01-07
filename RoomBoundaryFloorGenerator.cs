@@ -2,6 +2,7 @@
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace AR_Finishings
@@ -15,7 +16,7 @@ namespace AR_Finishings
             _doc = doc;
         }
 
-        public void CreateFloors(IEnumerable<ElementId> selectedRoomIds, FloorType selectedFloorType, double offset)
+        public void CreateFloors(IEnumerable<ElementId> selectedRoomIds, FloorType selectedFloorType)
         {
             StringBuilder message = new StringBuilder("Generated Floors for Room IDs:\n");
             using (Transaction trans = new Transaction(_doc, "Generate Floors"))
@@ -29,6 +30,7 @@ namespace AR_Finishings
                         Level level = _doc.GetElement(room.LevelId) as Level;
                         if (level != null)
                         {
+                            double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
                             SpatialElementBoundaryOptions options = new SpatialElementBoundaryOptions();
                             IList<IList<BoundarySegment>> boundaries = room.GetBoundarySegments(options);
 
@@ -36,18 +38,14 @@ namespace AR_Finishings
                             {
                                 foreach (IList<BoundarySegment> boundary in boundaries)
                                 {
-                                    CurveLoop curveLoop = new CurveLoop();
-                                    foreach (BoundarySegment segment in boundary)
-                                    {
-                                        curveLoop.Append(segment.GetCurve());
-                                    }
+                                    CurveLoop curveLoop = CurveLoop.Create(boundary.Select(seg => seg.GetCurve()).ToList());
                                     IList<CurveLoop> loops = new List<CurveLoop> { curveLoop };
 
                                     if (loops.Count > 0)
                                     {
                                         Floor floor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
-                                        floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(offset);
-                                        message.AppendLine(roomId.ToString());
+                                        floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
+                                        message.AppendLine($"Room ID: {roomId.Value}, Floor ID: {floor.Id.Value}");
                                     }
                                 }
                             }
@@ -58,5 +56,6 @@ namespace AR_Finishings
             }
             TaskDialog.Show("Room Selection", message.ToString());
         }
+
     }
 }
