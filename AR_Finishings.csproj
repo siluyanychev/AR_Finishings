@@ -59,6 +59,7 @@
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="RoomBoundaryCeilingGenerator.cs" />
     <Compile Include="RoomBoundaryFloorGenerator.cs" />
     <Compile Include="Strings.Designer.cs">
       <AutoGen>True</AutoGen>

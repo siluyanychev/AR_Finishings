@@ -102,12 +102,7 @@ namespace AR_Finishings
             // Получаем выбранный тип пола из ComboBox
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
 
-            // Получаем значения смещения из TextBox, предварительно проверив их на корректность
-            if (!double.TryParse(floorOffsetTextBox.Text, out double floorOffset))
-            {
-                MessageBox.Show("Please enter a valid number for floor offset.");
-                return;
-            }
+            
 
             // Используем метод для генерации полов с использованием выбранных параметров
             RoomBoundaryFloorGenerator generator = new RoomBoundaryFloorGenerator(mainDocument);
