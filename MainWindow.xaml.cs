@@ -25,8 +25,7 @@ namespace AR_Finishings
         private Document mainDocument;
         private IList<ElementId> _selectedRoomIds;
         // связка из разметки
-        public string FloorsOffset { get; set; } = "0"; // Значение по умолчанию для смещения пола
-        public string CeilingsHeight { get; set; } = "3200"; // Значение по умолчанию для высоты потолков
+        public double CeilingsHeight { get; set; } = 3100; // Значение по умолчанию для высоты потолков
         public string WallsOffset { get; set; } = "110"; // Значение по умолчанию для отступа по высоте стены за потолком 
         public string SkirtsHeight { get; set; } = "80"; // Значение по умолчанию для высоты плинтусов
         private void CheckBox_GetParameters(object sender, RoutedEventArgs e)
@@ -101,12 +100,20 @@ namespace AR_Finishings
         {
             // Получаем выбранный тип пола из ComboBox
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
+            CeilingType selectedCeilingType = selectCeilingsComboBox.SelectedItem as CeilingType;
 
-            
+            if (selectedCeilingType != null)
+            {
+                RoomBoundaryCeilingGenerator ceilingGenerator = new RoomBoundaryCeilingGenerator(mainDocument, CeilingsHeight);
+                ceilingGenerator.CreateCeilings(_selectedRoomIds, selectedCeilingType);
+            }
 
             // Используем метод для генерации полов с использованием выбранных параметров
-            RoomBoundaryFloorGenerator generator = new RoomBoundaryFloorGenerator(mainDocument);
-            generator.CreateFloors(_selectedRoomIds, selectedFloorType);
+            if (selectedFloorType != null)
+            {
+                RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
+                floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
+            }
         }
 
     }

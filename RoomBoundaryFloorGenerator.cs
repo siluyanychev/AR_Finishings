@@ -54,7 +54,11 @@ namespace AR_Finishings
                 }
                 trans.Commit();
             }
-            TaskDialog.Show("Room Selection", message.ToString());
+            if (selectedFloorType != null)
+            {
+                TaskDialog.Show("Room Selection", message.ToString());
+            }
+                
         }
 
     }
