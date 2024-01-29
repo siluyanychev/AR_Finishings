@@ -101,6 +101,7 @@ namespace AR_Finishings
             // Получаем выбранный тип пола из ComboBox
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
             CeilingType selectedCeilingType = selectCeilingsComboBox.SelectedItem as CeilingType;
+            WallType selectedWallType = selectWallsComboBox.SelectedItem as WallType;
 
             if (selectedCeilingType != null)
             {
@@ -114,7 +115,15 @@ namespace AR_Finishings
                 RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
                 floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
             }
-        }
 
+
+            // Используем метод для генерации полов с использованием выбранных параметров
+            if (selectedWallType != null)
+            {
+                // The wall generator needs to accept the ceiling height parameter.
+                RoomBoundaryWallGenerator wallGenerator = new RoomBoundaryWallGenerator(mainDocument, CeilingsHeight);
+                wallGenerator.CreateWalls(_selectedRoomIds, selectedWallType);
+            }
+        }
     }
 }
