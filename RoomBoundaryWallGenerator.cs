@@ -35,7 +35,7 @@ namespace AR_Finishings
                         foreach (var segment in boundary)
                         {
                             Curve curve = segment.GetCurve();
-                            Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, _wallHeight, 0, false, false);
+                            Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, _wallHeight/304.8, 0, false, false);
 
                             // Установка привязки стены к внутренней стороне
                             Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
@@ -44,14 +44,25 @@ namespace AR_Finishings
                                 wallKeyRefParam.Set(3); // 3 соответствует внутренней стороне стены
                             }
 
-                            // Смещение стены внутрь помещения
+                            // Assuming 'createdWall' is a Wall object that has just been created
+                            LocationCurve wallLocationCurve = createdWall.Location as LocationCurve;
+                            Curve wallCurve = wallLocationCurve.Curve;
+
+                            // Determine the wall's orientation and apply offset accordingly
+                            XYZ point0 = wallCurve.GetEndPoint(0);
+                            XYZ point1 = wallCurve.GetEndPoint(1);
+                            XYZ wallDirection = (point1 - point0).Normalize();
+                            XYZ normal = XYZ.BasisZ.CrossProduct(wallDirection); // Assuming walls are vertical, so Z cross product gives the normal
+
                             double wallWidth = selectedWallType.Width;
-                            XYZ offset = new XYZ(-wallWidth / 2, +wallWidth / 2, 0);
-                            Line wallLine = (createdWall.Location as LocationCurve).Curve as Line;
-                            XYZ newLineStart = wallLine.GetEndPoint(0).Add(offset);
-                            XYZ newLineEnd = wallLine.GetEndPoint(1).Add(offset);
-                            Line offsetLine = Line.CreateBound(newLineStart, newLineEnd);
-                            ElementTransformUtils.MoveElement(_doc, createdWall.Id, offsetLine.GetEndPoint(0) - wallLine.GetEndPoint(0));
+                            XYZ offset = normal * (+wallWidth / 2); // Offset towards the interior side of the wall
+
+                            // Create a new curve for the wall at the offset location
+                            Curve offsetCurve = wallCurve.CreateTransformed(Transform.CreateTranslation(offset));
+
+                            // Move the wall to the new offset location
+                            ElementTransformUtils.MoveElement(_doc, createdWall.Id, offset);
+
                         }
                     }
                 }
