@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows.Media;
 
 namespace AR_Finishings
 {
@@ -11,7 +12,7 @@ namespace AR_Finishings
     {
         private Document _doc;
         private double _wallHeight;
-
+        
         public RoomBoundaryWallGenerator(Document doc, double wallHeight)
         {
             _doc = doc;
@@ -28,6 +29,7 @@ namespace AR_Finishings
                 {
                     Room room = _doc.GetElement(roomId) as Room;
                     Level level = _doc.GetElement(room.LevelId) as Level;
+                    double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
 
                     var boundaries = room.GetBoundarySegments(new SpatialElementBoundaryOptions());
                     foreach (var boundary in boundaries)
@@ -35,7 +37,9 @@ namespace AR_Finishings
                         foreach (var segment in boundary)
                         {
                             Curve curve = segment.GetCurve();
-                            Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, _wallHeight/304.8, 0, false, false);
+                            Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, (_wallHeight / 304.8 - roomLowerOffset), 0, false, false);
+                            createdWall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
+                            message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
 
                             // Установка привязки стены к внутренней стороне
                             Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
@@ -58,7 +62,7 @@ namespace AR_Finishings
                             XYZ offset = normal * (+wallWidth / 2); // Offset towards the interior side of the wall
 
                             // Create a new curve for the wall at the offset location
-                            Curve offsetCurve = wallCurve.CreateTransformed(Transform.CreateTranslation(offset));
+                            Curve offsetCurve = wallCurve.CreateTransformed(Autodesk.Revit.DB.Transform.CreateTranslation(offset));
 
                             // Move the wall to the new offset location
                             ElementTransformUtils.MoveElement(_doc, createdWall.Id, offset);
@@ -68,7 +72,6 @@ namespace AR_Finishings
                 }
                 trans.Commit();
             }
-            TaskDialog.Show("Room Selection", message.ToString());
         }
     }
 }

@@ -26,8 +26,8 @@ namespace AR_Finishings
         private IList<ElementId> _selectedRoomIds;
         // связка из разметки
         public double CeilingsHeight { get; set; } = 3100; // Значение по умолчанию для высоты потолков
-        public string WallsOffset { get; set; } = "110"; // Значение по умолчанию для отступа по высоте стены за потолком 
-        public string SkirtsHeight { get; set; } = "80"; // Значение по умолчанию для высоты плинтусов
+        public double WallsOffset { get; set; } = 100; // Значение по умолчанию для отступа по высоте стены за потолком 
+        public double SkirtsHeight { get; set; } = 80; // Значение по умолчанию для высоты плинтусов
         private void CheckBox_GetParameters(object sender, RoutedEventArgs e)
         {
             // Логика обработки события для CheckBox_ValsForElements
@@ -121,7 +121,7 @@ namespace AR_Finishings
             if (selectedWallType != null)
             {
                 // The wall generator needs to accept the ceiling height parameter.
-                RoomBoundaryWallGenerator wallGenerator = new RoomBoundaryWallGenerator(mainDocument, CeilingsHeight);
+                RoomBoundaryWallGenerator wallGenerator = new RoomBoundaryWallGenerator(mainDocument, (CeilingsHeight + WallsOffset));
                 wallGenerator.CreateWalls(_selectedRoomIds, selectedWallType);
             }
         }
