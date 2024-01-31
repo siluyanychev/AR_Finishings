@@ -41,6 +41,13 @@ namespace AR_Finishings
                             createdWall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
 
+                            // Join walls 
+                            Element boundaryElement = _doc.GetElement(segment.ElementId);
+                            if (boundaryElement != null && createdWall != null)
+                            {
+                                JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
+                            }
+
                             // Установка привязки стены к внутренней стороне
                             Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
                             if (wallKeyRefParam != null && wallKeyRefParam.StorageType == StorageType.Integer)
