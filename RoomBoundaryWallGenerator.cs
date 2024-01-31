@@ -23,7 +23,10 @@ namespace AR_Finishings
         {
             StringBuilder message = new StringBuilder("Generated Walls for Room IDs:\n");
             using (Transaction trans = new Transaction(_doc, "Generate Walls"))
+
             {
+                List<Wall> createdWalls = new List<Wall>();
+
                 trans.Start();
                 foreach (ElementId roomId in selectedRoomIds)
                 {
@@ -36,13 +39,27 @@ namespace AR_Finishings
                     {
                         foreach (var segment in boundary)
                         {
+
+                            // Получаем элемент, соответствующий сегменту границы помещения
+                            Element boundaryElement = _doc.GetElement(segment.ElementId);
+
+                            // Проверяем, не является ли элемент стеной с CurtainGrid
+                            Wall boundaryWall = boundaryElement as Wall;
+                            if (boundaryWall != null && boundaryWall.CurtainGrid != null)
+                            {
+                                // Пропускаем создание стены, если это витраж
+                                continue;
+                            }
+
                             Curve curve = segment.GetCurve();
                             Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, (_wallHeight / 304.8 - roomLowerOffset), 0, false, false);
                             createdWall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
+                            createdWalls.Add( createdWall );
+
+
 
                             // Join walls 
-                            Element boundaryElement = _doc.GetElement(segment.ElementId);
                             if (boundaryElement != null && createdWall != null)
                             {
                                 JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
@@ -74,11 +91,72 @@ namespace AR_Finishings
                             // Move the wall to the new offset location
                             ElementTransformUtils.MoveElement(_doc, createdWall.Id, offset);
 
+
+                            createdWalls.Add(createdWall);
                         }
                     }
                 }
                 trans.Commit();
+                // Вызовите TrimExtendWalls после того как транзакция будет закрыта
+                TrimExtendWalls(_doc, createdWalls );
+            }
+
+
+            
+        }
+        private void TrimExtendWalls(Document doc, List<Wall> walls)
+        {
+            using (Transaction trans = new Transaction(doc, "Trim/Extend Walls"))
+            {
+                trans.Start();
+
+                for (int i = 0; i < walls.Count - 1; i++)
+                {
+                    for (int j = i + 1; j < walls.Count; j++)
+                    {
+                        Wall wall1 = walls[i];
+                        Wall wall2 = walls[j];
+
+                        LocationCurve locCurve1 = wall1.Location as LocationCurve;
+                        LocationCurve locCurve2 = wall2.Location as LocationCurve;
+
+                        if (locCurve1 != null && locCurve2 != null)
+                        {
+                            Curve curve1 = locCurve1.Curve;
+                            Curve curve2 = locCurve2.Curve;
+
+                            IntersectionResultArray results;
+                            SetComparisonResult comparisonResult = curve1.Intersect(curve2, out results);
+
+                            if (comparisonResult == SetComparisonResult.Overlap)
+                            {
+                                // There might be more than one intersection result
+                                foreach (IntersectionResult ir in results)
+                                {
+                                    XYZ intersectionPoint = ir.XYZPoint;
+
+                                    // Extend wall1 to intersection
+                                    if (!curve1.GetEndPoint(0).IsAlmostEqualTo(intersectionPoint))
+                                    {
+                                        locCurve1.Curve = Line.CreateBound(curve1.GetEndPoint(0), intersectionPoint);
+                                    }
+
+                                    // Extend wall2 to intersection
+                                    if (!curve2.GetEndPoint(0).IsAlmostEqualTo(intersectionPoint))
+                                    {
+                                        locCurve2.Curve = Line.CreateBound(curve2.GetEndPoint(0), intersectionPoint);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                trans.Commit();
             }
         }
+
+
+
     }
 }
