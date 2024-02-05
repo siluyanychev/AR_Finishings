@@ -19,7 +19,6 @@ namespace AR_Finishings
             _doc = doc;
             _wallHeight = wallHeight;
         }
-
         public void CreateWalls(IEnumerable<ElementId> selectedRoomIds, WallType selectedWallType)
         {
             StringBuilder message = new StringBuilder("Generated Walls for Room IDs:\n");
@@ -54,23 +53,18 @@ namespace AR_Finishings
                             if (boundaryElement.Category != null &&
                                 boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_RoomSeparationLines)
                             {
-                                // Пропускаем создание стены, если это разделитель помещений
                                 continue;
                             }
-
                             Curve curve = segment.GetCurve();
-                            Wall createdWall = Wall.Create(_doc, curve, selectedWallType.Id, level.Id, (_wallHeight / 304.8 - roomLowerOffset), 0, false, false);
+                            // Для кривых, которые представляют внешние края стен
+                            Curve outerCurve = curve.CreateOffset(selectedWallType.Width / -2.0, XYZ.BasisZ);
+                            // Для кривых, которые представляют внутренние края стен
+                            Curve innerCurve = curve.CreateOffset(selectedWallType.Width / 2.0, XYZ.BasisZ);
+
+                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, (_wallHeight / 304.8 - roomLowerOffset), 0, false, false);
                             createdWall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                             createdWalls.Add(createdWall);
-
-
-
-                            // Join walls 
-                            if (boundaryElement != null && createdWall != null)
-                            {
-                                JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
-                            }
 
                             // Установка привязки стены к внутренней стороне
                             Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
@@ -79,27 +73,13 @@ namespace AR_Finishings
                                 wallKeyRefParam.Set(3); // 3 соответствует внутренней стороне стены
                             }
 
-                            // Assuming 'createdWall' is a Wall object that has just been created
-                            LocationCurve wallLocationCurve = createdWall.Location as LocationCurve;
-                            Curve wallCurve = wallLocationCurve.Curve;
-
-                            // Determine the wall's orientation and apply offset accordingly
-                            XYZ point0 = wallCurve.GetEndPoint(0);
-                            XYZ point1 = wallCurve.GetEndPoint(1);
-                            XYZ wallDirection = (point1 - point0).Normalize();
-                            XYZ normal = XYZ.BasisZ.CrossProduct(wallDirection); // Assuming walls are vertical, so Z cross product gives the normal
-
-                            double wallWidth = selectedWallType.Width;
-                            XYZ offset = normal * (+wallWidth / 2); // Offset towards the interior side of the wall
-
-                            // Create a new curve for the wall at the offset location
-                            Curve offsetCurve = wallCurve.CreateTransformed(Autodesk.Revit.DB.Transform.CreateTranslation(offset));
-
-                            // Move the wall to the new offset location
-                            ElementTransformUtils.MoveElement(_doc, createdWall.Id, offset);
-
-
-                            //createdWalls.Add(createdWall);
+                            // Join walls 
+                            if (boundaryElement != null && 
+                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls && 
+                                createdWall != null)
+                            {
+                                JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
+                            }
                         }
                     }
                 }
