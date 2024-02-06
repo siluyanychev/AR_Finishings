@@ -61,6 +61,7 @@
     </Compile>
     <Compile Include="RoomBoundaryCeilingGenerator.cs" />
     <Compile Include="RoomBoundaryFloorGenerator.cs" />
+    <Compile Include="RoomBoundarySkirtGenerator.cs" />
     <Compile Include="RoomBoundaryWallGenerator.cs" />
     <Compile Include="Strings.Designer.cs">
       <AutoGen>True</AutoGen>

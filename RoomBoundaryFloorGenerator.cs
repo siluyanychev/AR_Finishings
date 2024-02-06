@@ -36,17 +36,22 @@ namespace AR_Finishings
 
                             if (boundaries.Count > 0)
                             {
-                                foreach (IList<BoundarySegment> boundary in boundaries)
-                                {
-                                    CurveLoop curveLoop = CurveLoop.Create(boundary.Select(seg => seg.GetCurve()).ToList());
-                                    IList<CurveLoop> loops = new List<CurveLoop> { curveLoop };
+                                // Основной контур пола
+                                CurveLoop mainCurveLoop = CurveLoop.Create(boundaries[0].Select(seg => seg.GetCurve()).ToList());
+                                IList<CurveLoop> loops = new List<CurveLoop> { mainCurveLoop };
 
-                                    if (loops.Count > 0)
-                                    {
-                                        Floor floor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
-                                        floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
-                                        message.AppendLine($"Room ID: {roomId.Value}, Floor ID: {floor.Id.Value}");
-                                    }
+                                // Внутренние контуры (отверстия)
+                                for (int i = 1; i < boundaries.Count; i++)
+                                {
+                                    CurveLoop innerCurveLoop = CurveLoop.Create(boundaries[i].Select(seg => seg.GetCurve()).ToList());
+                                    loops.Add(innerCurveLoop); // Добавляем как отверстия в полу
+                                }
+
+                                if (loops.Count > 0)
+                                {
+                                    Floor floor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
+                                    floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
+                                    message.AppendLine($"Room ID: {roomId.Value}, Floor ID: {floor.Id.Value}");
                                 }
                             }
                         }
@@ -58,8 +63,8 @@ namespace AR_Finishings
             {
                 TaskDialog.Show("Room Selection", message.ToString());
             }
-                
         }
+
 
     }
 }

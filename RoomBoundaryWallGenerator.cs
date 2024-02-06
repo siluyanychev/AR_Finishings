@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Windows.Media;
+using System.Xaml;
 
 namespace AR_Finishings
 {
@@ -41,12 +42,17 @@ namespace AR_Finishings
                         {
                             Element boundaryElement = _doc.GetElement(segment.ElementId);
 
-                            // Проверяем, является ли элемент стеной с CurtainGrid
+                            // Проверяем, является ли элемент стеной с CurtainGrid или имя типа начинается с "АР_О"
                             Wall boundaryWall = boundaryElement as Wall;
-                            if (boundaryWall != null && boundaryWall.CurtainGrid != null)
+
+                            if (boundaryWall != null)
                             {
-                                // Пропускаем создание стены, если это витраж
-                                continue;
+                                WallType wallType = _doc.GetElement(boundaryWall.GetTypeId()) as WallType;
+                                if (boundaryWall.CurtainGrid != null || (wallType != null && wallType.Name.StartsWith("АР_О")))
+                                {
+                                    // Пропускаем создание стены, если это витраж или тип стены начинается с "АР_О"
+                                    continue;
+                                }
                             }
 
                             // Проверяем, является ли элемент разделителем помещений
@@ -74,8 +80,8 @@ namespace AR_Finishings
                             }
 
                             // Join walls 
-                            if (boundaryElement != null && 
-                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls && 
+                            if (boundaryElement != null &&
+                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
                                 createdWall != null)
                             {
                                 JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);

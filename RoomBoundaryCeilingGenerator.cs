@@ -37,17 +37,22 @@ namespace AR_Finishings
 
                             if (boundaries.Count > 0)
                             {
-                                foreach (IList<BoundarySegment> boundary in boundaries)
-                                {
-                                    CurveLoop curveLoop = CurveLoop.Create(boundary.Select(seg => seg.GetCurve()).ToList());
-                                    IList<CurveLoop> loops = new List<CurveLoop> { curveLoop };
+                                // Основной контур потолка
+                                CurveLoop mainCurveLoop = CurveLoop.Create(boundaries[0].Select(seg => seg.GetCurve()).ToList());
+                                IList<CurveLoop> loops = new List<CurveLoop> { mainCurveLoop };
 
-                                    if (loops.Count > 0)
-                                    {
-                                        Ceiling ceiling = Ceiling.Create(_doc, loops, selectedCeilingType.Id, level.Id);
-                                        ceiling.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM).Set(UnitUtils.ConvertToInternalUnits(_ceilingHeight, UnitTypeId.Millimeters));
-                                        message.AppendLine($"Room ID: {roomId.Value}, Ceiling ID: {ceiling.Id.Value}");
-                                    }
+                                // Внутренние контуры (отверстия)
+                                for (int i = 1; i < boundaries.Count; i++)
+                                {
+                                    CurveLoop innerCurveLoop = CurveLoop.Create(boundaries[i].Select(seg => seg.GetCurve()).ToList());
+                                    loops.Add(innerCurveLoop); // Добавляем как отверстия в потолке
+                                }
+
+                                if (loops.Count > 0)
+                                {
+                                    Ceiling ceiling = Ceiling.Create(_doc, loops, selectedCeilingType.Id, level.Id);
+                                    ceiling.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM).Set(UnitUtils.ConvertToInternalUnits(_ceilingHeight, UnitTypeId.Millimeters));
+                                    message.AppendLine($"Room ID: {roomId.Value}, Ceiling ID: {ceiling.Id.Value}");
                                 }
                             }
                         }
@@ -60,5 +65,6 @@ namespace AR_Finishings
                 TaskDialog.Show("Room Selection", message.ToString());
             }
         }
+
     }
 }
