@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Xaml;
 
@@ -14,6 +15,7 @@ namespace AR_Finishings
     {
         private Document _doc;
         private double _skirtHeight;
+        private List<Wall> createdWalls = new List<Wall>();
 
         public RoomBoundarySkirtGenerator(Document doc, double skirtHeight)
         {
@@ -33,9 +35,6 @@ namespace AR_Finishings
                     Room room = _doc.GetElement(roomId) as Room;
                     Level level = _doc.GetElement(room.LevelId) as Level;
                     double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
-
-                    // Вызываем метод FindDoors для поиска дверей внутри комнаты
-                    ICollection<ElementId> doorsInRoomIds = FindDoors(room);
 
                     var boundaries = room.GetBoundarySegments(new SpatialElementBoundaryOptions());
                     foreach (var boundary in boundaries)
@@ -74,8 +73,6 @@ namespace AR_Finishings
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                             createdWalls.Add(createdWall);
 
-                            // Используем doorsInRoomIds для обработки дверей внутри комнаты
-                            CutSkirtsAtDoors(_doc, createdWall, doorsInRoomIds);
 
                             // Установка привязки стены к внутренней стороне
                             Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
@@ -97,101 +94,144 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
-        private ICollection<ElementId> FindDoors(Room room)
+        // Добавляем новый метод в класс RoomBoundarySkirtGenerator
+        public void CutSkirtsAtDoors(IEnumerable<ElementId> roomIds)
         {
-            // Создайте пустую коллекцию для хранения идентификаторов дверей
-            List<ElementId> doorIdsInRoom = new List<ElementId>();
-
-            // Получите объекты всех дверей в проекте
-            FilteredElementCollector collector = new FilteredElementCollector(_doc);
-            collector.OfCategory(BuiltInCategory.OST_Doors);
-
-            foreach (Element doorElement in collector)
+            using (Transaction trans = new Transaction(_doc, "Cut Skirts at Doors"))
             {
-                FamilyInstance door = doorElement as FamilyInstance;
-                if (door != null)
+                trans.Start();
+
+                // Получаем последнюю фазу проекта
+                Phase phase = _doc.Phases.Cast<Phase>().FirstOrDefault(p => p.Name == "Новая конструкция");
+
+                if (phase == null)
                 {
-                    // Получите Location для двери
-                    Location doorLocation = door.Location;
-
-                    if (doorLocation != null && doorLocation is LocationPoint locationPoint)
-                    {
-                        XYZ doorPoint = locationPoint.Point;
-
-                        // Проверьте, принадлежит ли точка двери комнате
-                        if (room.IsPointInRoom(doorPoint))
-                        {
-                            doorIdsInRoom.Add(door.Id);
-                        }
-                    }
+                    TaskDialog.Show("Error", "Фаза не найдена!");
+                    trans.RollBack();
+                    return;
                 }
-            }
 
-            return doorIdsInRoom;
-        }
-
-
-        private void CutSkirtsAtDoors(Document doc, Wall skirtWall, ICollection<ElementId> doorIds)
-        {
-            LocationCurve skirtLocationCurve = skirtWall.Location as LocationCurve;
-            if (skirtLocationCurve == null) return;
-
-            Curve skirtCurve = skirtLocationCurve.Curve;
-            Line skirtLine = skirtCurve as Line;
-            if (skirtLine == null) return;
-
-            foreach (ElementId doorId in doorIds)
-            {
-                Element door = doc.GetElement(doorId);
-                LocationPoint doorLocation = door.Location as LocationPoint;
-                if (doorLocation != null)
+                foreach (ElementId roomId in roomIds)
                 {
-                    XYZ doorPoint = doorLocation.Point;
-                    BoundingBoxXYZ doorBox = door.get_BoundingBox(null);
+                    Room room = _doc.GetElement(roomId) as Room;
 
-                    // Найти точки пересечения и создать новые сегменты стены, если они в пределах плинтуса
-                    XYZ intersect1, intersect2;
-                    if (LineIntersectsBox(skirtLine, doorBox, out intersect1, out intersect2))
+                    // Создаем коллектор для поиска всех дверей в комнате в контексте последней фазы
+                    var doorsInRoom = new FilteredElementCollector(_doc)
+                        .OfCategory(BuiltInCategory.OST_Doors)
+                        .WhereElementIsNotElementType()
+                        .Cast<FamilyInstance>()
+                        .Where(door => door.get_FromRoom(phase)?.Id == roomId || door.get_ToRoom(phase)?.Id == roomId).ToList();
+
+                    foreach (FamilyInstance door in doorsInRoom)
                     {
-                        using (Transaction trans = new Transaction(doc, "Cut Skirts"))
-                        {
-                            trans.Start();
+                        LocationPoint doorLocation = door.Location as LocationPoint;
+                        if (doorLocation == null) continue;
 
-                            // Создаем новые сегменты плинтуса
-                            if (intersect1.DistanceTo(intersect2) > 0) // Убедитесь, что точки пересечения действительны
+                        XYZ doorPosition = doorLocation.Point;
+                        XYZ doorDirection = door.HandOrientation; // Используем HandOrientation как направление двери
+                        double doorWidth = (door.get_BoundingBox(null).Max.X - door.get_BoundingBox(null).Min.X) * _doc.ActiveView.Scale;
+
+                        foreach (Wall roomWall in createdWalls)
+                        {
+                            LocationCurve wallLocationCurve = roomWall.Location as LocationCurve;
+                            if (wallLocationCurve == null) continue;
+
+                            Curve wallCurve = wallLocationCurve.Curve;
+                            Line extendedLine1 = ExtendLine(wallCurve, 200 / 304.8); // 200 мм в футах
+                            Line extendedLine2 = ExtendLine(wallCurve.CreateReversed(), 200 / 304.8);
+
+                            // Проверяем пересечение расширенной линии с кривой стены
+                            IntersectionResultArray results;
+                            if (wallCurve.Intersect(extendedLine1, out results) == SetComparisonResult.Overlap)
                             {
-                                Curve segmentBefore = Line.CreateBound(skirtLine.GetEndPoint(0), intersect1);
-                                Curve segmentAfter = Line.CreateBound(intersect2, skirtLine.GetEndPoint(1));
-
-                                // Создаем новые стены плинтуса
-                                Wall.Create(doc, segmentBefore, skirtWall.WallType.Id, skirtWall.LevelId, _skirtHeight, 0, false, false);
-                                Wall.Create(doc, segmentAfter, skirtWall.WallType.Id, skirtWall.LevelId, _skirtHeight, 0, false, false);
+                                ProcessIntersection(results, roomWall, doorPosition, doorDirection, doorWidth);
                             }
-
-                            // Удаляем исходный плинтус, который пересекается с дверью
-                            doc.Delete(skirtWall.Id);
-
-                            trans.Commit();
+                            if (wallCurve.Intersect(extendedLine2, out results) == SetComparisonResult.Overlap)
+                            {
+                                ProcessIntersection(results, roomWall, doorPosition, doorDirection, doorWidth);
+                            }
                         }
                     }
                 }
+
+                trans.Commit();
             }
         }
 
-
-        // Метод для проверки пересечения линии и bounding box'а двери
-        private bool LineIntersectsBox(Line line, BoundingBoxXYZ box, out XYZ point1, out XYZ point2)
+        private Line ExtendLine(Curve curve, double length)
         {
-            // Реализуйте логику для определения пересечения линии с bounding box'ом
-            // Установите point1 и point2 в точки пересечения
-            // Верните true, если линия пересекает bounding box, иначе false
+            XYZ start = curve.GetEndPoint(0);
+            XYZ end = curve.GetEndPoint(1);
 
-            // Это просто псевдокод для демонстрации
-            point1 = null;
-            point2 = null;
-            return false;
+            XYZ direction = (end - start).Normalize();
+            XYZ extendedStart = start - direction * length;
+            XYZ extendedEnd = end + direction * length;
+
+            return Line.CreateBound(extendedStart, extendedEnd);
         }
 
+        private void ProcessIntersection(IntersectionResultArray results, Wall roomWall, XYZ doorPosition, XYZ doorDirection, double doorWidth)
+        {
+            // Check if we have intersection points
+            if (results == null || results.Size == 0)
+                return;
 
+            // This boolean tracks if we created new walls to decide on deleting the original wall
+            bool createdNewWall = false;
+
+            // Assume the first intersection point is the start of the door and the second is the end
+            XYZ intersectionStart = results.get_Item(0).XYZPoint;
+            XYZ intersectionEnd = results.Size > 1 ? results.get_Item(1).XYZPoint : null;
+
+            // Check if the first intersection point is actually within the door's width
+            if (intersectionStart.DistanceTo(doorPosition) <= doorWidth / 2.0)
+            {
+                // If the first intersection is within the door, then this is not an intersection we cut at
+                intersectionStart = null;
+            }
+
+            // Check if the second intersection point is actually within the door's width
+            if (intersectionEnd != null && intersectionEnd.DistanceTo(doorPosition) <= doorWidth / 2.0)
+            {
+                // If the second intersection is within the door, then this is not an intersection we cut at
+                intersectionEnd = null;
+            }
+
+            // If we have valid intersection points, create new walls
+            if (intersectionStart != null || intersectionEnd != null)
+            {
+                // Retrieve the original wall's start and end points
+                Curve wallCurve = (roomWall.Location as LocationCurve).Curve;
+                XYZ wallStart = wallCurve.GetEndPoint(0);
+                XYZ wallEnd = wallCurve.GetEndPoint(1);
+
+                // Create the new wall segments
+                if (intersectionStart != null)
+                {
+                    Curve newWallCurve = Line.CreateBound(wallStart, intersectionStart);
+                    if (newWallCurve.Length > 0.1) // Ensure the new wall has a minimum length
+                    {
+                        Wall.Create(_doc, newWallCurve, roomWall.WallType.Id, roomWall.LevelId, roomWall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+                        createdNewWall = true;
+                    }
+                }
+
+                if (intersectionEnd != null)
+                {
+                    Curve newWallCurve = Line.CreateBound(intersectionEnd, wallEnd);
+                    if (newWallCurve.Length > 0.1) // Ensure the new wall has a minimum length
+                    {
+                        Wall.Create(_doc, newWallCurve, roomWall.WallType.Id, roomWall.LevelId, roomWall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+                        createdNewWall = true;
+                    }
+                }
+
+                // If new walls were created, delete the original wall
+                if (createdNewWall)
+                {
+                    _doc.Delete(roomWall.Id);
+                }
+            }
+        }
     }
 }

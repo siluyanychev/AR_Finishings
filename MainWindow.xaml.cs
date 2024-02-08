@@ -124,12 +124,16 @@ namespace AR_Finishings
                 RoomBoundaryWallGenerator wallGenerator = new RoomBoundaryWallGenerator(mainDocument, (CeilingsHeight + WallsOffset));
                 wallGenerator.CreateWalls(_selectedRoomIds, selectedWallType);
             }
+            // Внутри метода RunButton_Click перед созданием skirtGenerator
+            Room firstSelectedRoom = mainDocument.GetElement(_selectedRoomIds.First()) as Room;
+            ElementId levelId = firstSelectedRoom.LevelId;
 
             if (selectedWallType != null)
             {
                 // The wall generator needs to accept the ceiling height parameter.
                 RoomBoundarySkirtGenerator skirtGenerator = new RoomBoundarySkirtGenerator(mainDocument, SkirtsHeight);
                 skirtGenerator.CreateWalls(_selectedRoomIds, selectedWallType);
+                skirtGenerator.CutSkirtsAtDoors(_selectedRoomIds);
             }
         }
     }
