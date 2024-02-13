@@ -3,6 +3,7 @@ using Autodesk.Revit.UI;
 using System;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 
 namespace AR_Finishings
 {
@@ -26,57 +27,76 @@ namespace AR_Finishings
         public void GetParameters(Document doc)
         {
             // Определение имени параметра
-            string parameterName = "DPM_X_Слои.Состав";
+            string[] parameterGeometryName = 
+            {
+                "DPM_AR_Отделка.Имя",
+                "DPM_AR_Отделка.Имена",
+                "DPM_AR_Отделка.Номер",
+                "DPM_AR_Отделка.Номера"
+            };
+            string[] parameterRooms =
+            {
+                "DPM_AR_Отделка.Плинтусы",
+                "DPM_AR_Отделка.Плинтусы.Длина",
+                "DPM_AR_Отделка.Колонны",
+                "DPM_AR_Отделка.Колонны.Площадь",
+                "DPM_AR_Отделка.Полы",
+                "DPM_AR_Отделка.Полы.Площадь",
+                "DPM_AR_Отделка.Потолки",
+                "DPM_AR_Отделка.Потолки.Площадь",
+                "DPM_AR_Отделка.Потолки.Высота",
+                "DPM_AR_Отделка.Стены",
+                "DPM_AR_Отделка.Стены.Площадь"
+            };
 
-            // Проверка соединения с VPN перед началом работы с категориями
             if (!CheckPathToSharedParameter())
             {
-                // Время ожидания истекло, показываем сообщение об ошибке
                 TaskDialog.Show("Подключите VPN", "Для загрузки параметра необходимо подключить VPN.");
-                return; // Выход из метода, если нет VPN
+                return;
             }
 
-            // Определение интересующих категорий
-            BuiltInCategory[] categories = new BuiltInCategory[]
+            BuiltInCategory[] categories = 
             {
             BuiltInCategory.OST_Ceilings,
             BuiltInCategory.OST_Floors,
-            BuiltInCategory.OST_Roofs,
             BuiltInCategory.OST_Walls
             };
 
-            // Переменная для отслеживания, был ли применен параметр хотя бы к одной категории
-            bool parameterApplied = false;
+            BuiltInCategory rooms = BuiltInCategory.OST_Rooms;
+
+            bool parameterApplied = false; // Переменная для отслеживания статуса применения параметров
 
             foreach (var category in categories)
             {
-                // Проверка, применен ли параметр
-                bool isParameterApplied = CheckIfParameterApplied(doc, category, parameterName);
-
+                bool isParameterApplied = CheckIfParametersApplied(doc, category, parameterGeometryName);
                 if (!isParameterApplied)
                 {
-                    // Применение параметра
-                    ApplyParameter(doc, categories, parameterName);
-                    parameterApplied = true; // Отмечаем, что параметр был применен
+                    ApplyParameters(doc, new BuiltInCategory[] { category }, parameterGeometryName);
+                    parameterApplied = true;
                 }
             }
-
-            // Если параметр не был применен ни к одной категории, сообщаем об этом
+            bool isRoomParameterApplied = CheckIfParametersApplied(doc, rooms, parameterRooms);
+            if (!isRoomParameterApplied)
+            {
+                ApplyParameters(doc, new BuiltInCategory[] { rooms }, parameterRooms);
+            }
+            
             if (!parameterApplied)
             {
-                TaskDialog.Show("Результат", "Параметры не были применены к какой-либо категории.");
+                TaskDialog.Show("Результат", "Параметры уже применены к всем необходимым категориям.");
+            }
+            else
+            {
+                TaskDialog.Show("Результат", "Параметры успешно применены.");
             }
         }
 
-
-        private bool CheckIfParameterApplied(Document doc, BuiltInCategory category, string parameterName)
+        private bool CheckIfParametersApplied(Document doc, BuiltInCategory category, string[] parameterNames)
         {
-            // Получаем список всех параметров для данной категории
             Category cat = doc.Settings.Categories.get_Item(category);
             CategorySet categories = new CategorySet();
             categories.Insert(cat);
 
-            // Проверяем наличие параметра в BindingMap
             BindingMap bindingMap = doc.ParameterBindings;
             DefinitionBindingMapIterator it = bindingMap.ForwardIterator();
             it.Reset();
@@ -84,31 +104,30 @@ namespace AR_Finishings
             while (it.MoveNext())
             {
                 Definition definition = it.Key;
-                // Проверяем, соответствует ли имя параметра заданному имени и применен ли он к нужной категории
-                if (definition.Name == parameterName)
+                ElementBinding binding = (ElementBinding)it.Current;
+
+                foreach (string paramName in parameterNames)
                 {
-                    ElementBinding binding = (ElementBinding)it.Current;
-                    if (binding.Categories.Contains(cat))
+                    if (definition.Name == paramName && binding.Categories.Contains(cat))
                     {
                         return true; // Параметр применен
                     }
                 }
             }
 
-            return false; // Параметр не найден
+            return false; // Ни один из параметров не найден
         }
 
-
-        private void ApplyParameter(Document doc, BuiltInCategory[] categories, string parameterName)
+        private void ApplyParameters(Document doc, BuiltInCategory[] categories, string[] parameterNames)
         {
-            using (Transaction t = new Transaction(doc, "Применен DPM_X_Слои.Состав к элементам типа"))
+            using (Transaction t = new Transaction(doc, "Применены параметры к элементам"))
             {
                 t.Start();
 
                 DefinitionFile sharedParameterFile = doc.Application.OpenSharedParameterFile();
                 if (sharedParameterFile == null)
                 {
-                    throw new InvalidOperationException("Файл общих параметров не найден, или влючите VPN на диск 'К' или добавьте его по пути K:\\BIM\\X\\04_Данные\\01_Общие параметры_TXT  ");
+                    throw new InvalidOperationException("Файл общих параметров не найден.");
                 }
 
                 DefinitionGroup group = sharedParameterFile.Groups.get_Item("02 Обязательные АРХИТЕКТУРА");
@@ -117,13 +136,6 @@ namespace AR_Finishings
                     throw new InvalidOperationException("Parameter group not found.");
                 }
 
-                ExternalDefinition definition = group.Definitions.get_Item(parameterName) as ExternalDefinition;
-                if (definition == null)
-                {
-                    throw new InvalidOperationException("Parameter definition not found.");
-                }
-
-                // Create a CategorySet for all the categories
                 CategorySet categorySet = new CategorySet();
                 foreach (BuiltInCategory catEnum in categories)
                 {
@@ -131,18 +143,21 @@ namespace AR_Finishings
                     categorySet.Insert(cat);
                 }
 
-                // Create a TypeBinding for the entire category set
-                TypeBinding typeBinding = doc.Application.Create.NewTypeBinding(categorySet);
-
+                InstanceBinding InstanceBinding = doc.Application.Create.NewInstanceBinding(categorySet);
                 BindingMap bindingMap = doc.ParameterBindings;
-                bool bindSuccess = bindingMap.Insert(definition, typeBinding, GroupTypeId.Data);
 
-                if (!bindSuccess)
+                foreach (var parameterName in parameterNames)
                 {
-                    // If the parameter already exists in the project, rebind with the new definition
-                    if (bindingMap.Contains(definition))
+                    ExternalDefinition definition = group.Definitions.get_Item(parameterName) as ExternalDefinition;
+                    if (definition == null)
                     {
-                        bindSuccess = bindingMap.ReInsert(definition, typeBinding, GroupTypeId.Data);
+                        continue; // Если параметр не найден, пропускаем его
+                    }
+
+                    bool bindSuccess = bindingMap.Insert(definition, InstanceBinding, GroupTypeId.IdentityData);
+                    if (!bindSuccess && bindingMap.Contains(definition))
+                    {
+                        bindSuccess = bindingMap.ReInsert(definition, InstanceBinding, GroupTypeId.IdentityData);
                     }
                     if (!bindSuccess)
                     {
@@ -153,8 +168,5 @@ namespace AR_Finishings
                 t.Commit();
             }
         }
-
-
-
     }
 }

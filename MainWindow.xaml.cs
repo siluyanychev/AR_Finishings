@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Resources;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace AR_Finishings
 {
@@ -24,19 +25,16 @@ namespace AR_Finishings
         public ExternalCommandData commandData;
         private Document mainDocument;
         private IList<ElementId> _selectedRoomIds;
-        // связка из разметки
+        // связка из разметки 
         public double CeilingsHeight { get; set; } = 3100; // Значение по умолчанию для высоты потолков
         public double WallsOffset { get; set; } = 100; // Значение по умолчанию для отступа по высоте стены за потолком 
-        public double SkirtsHeight { get; set; } = 80; // Значение по умолчанию для высоты плинтусов
-        private void CheckBox_GetParameters(object sender, RoutedEventArgs e)
-        {
-            // Логика обработки события для CheckBox_ValsForElements
-        }
+        public double SkirtsHeight { get; set; } = 100; // Значение по умолчанию для высоты плинтусов
+        private bool _isParametersCheckboxChecked;
+
         private void CheckBox_ValsForElements(object sender, RoutedEventArgs e)
         {
             // Логика обработки события для CheckBox_ValsForElements
         }
-
         private void CheckBox_ValsForRooms(object sender, RoutedEventArgs e)
         {
             // Логика обработки события для CheckBox_ValsForRooms
@@ -95,13 +93,26 @@ namespace AR_Finishings
             UpdateWallTypes();
             UpdateSkirtTypes();
         }
+        private void CheckBox_GetParameters(object sender, RoutedEventArgs e)
+        {
+            var checkBox = sender as CheckBox;
+            _isParametersCheckboxChecked = checkBox.IsChecked == true;
+        }
 
         private void RunButton_Click(object sender, RoutedEventArgs e)
         {
             // Получаем выбранный тип пола из ComboBox
+
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
             CeilingType selectedCeilingType = selectCeilingsComboBox.SelectedItem as CeilingType;
             WallType selectedWallType = selectWallsComboBox.SelectedItem as WallType;
+
+            if (_isParametersCheckboxChecked)
+            {
+                // Если чекбокс отмечен, вызываем методы из класса Preparations
+                Preparations preparation = new Preparations();
+                preparation.GetParameters(mainDocument);
+            }
 
             if (selectedCeilingType != null)
             {
@@ -115,8 +126,6 @@ namespace AR_Finishings
                 RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
                 floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
             }
-
-
             // Используем метод для генерации полов с использованием выбранных параметров
             if (selectedWallType != null)
             {
