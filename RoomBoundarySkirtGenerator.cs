@@ -80,7 +80,12 @@ namespace AR_Finishings
                             {
                                 wallKeyRefParam.Set(3); // 3 соответствует внутренней стороне стены
                             }
-
+                            // Установка отмены границы помещения
+                            Parameter wallBoundaries = createdWall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING);
+                            if (wallBoundaries != null && wallBoundaries.StorageType == StorageType.Integer)
+                            {
+                                wallBoundaries.Set(0);
+                            }
                             // Join walls 
                             if (boundaryElement != null &&
                                 boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
