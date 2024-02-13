@@ -38,6 +38,7 @@ namespace AR_Finishings
                 {
                     Room room = _doc.GetElement(roomId) as Room;
                     string roomNameValue = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString();
+                    string roomNumberValue = room.get_Parameter(BuiltInParameter.ROOM_NUMBER).AsString();
                     Level level = _doc.GetElement(room.LevelId) as Level;
                     double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
 
@@ -60,9 +61,8 @@ namespace AR_Finishings
                             createdWalls.Add(createdWall); // Добавляем стену в список
 
                             // Настройка параметров стены
-                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue);
+                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue);
 
-                            message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                         }
                     }
                 }
@@ -70,11 +70,9 @@ namespace AR_Finishings
                 trans.Commit();
             }
 
-            // Выводим сообщение с результатами
-            TaskDialog.Show("Walls Creation Report", message.ToString());
         }
 
-        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue)
+        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue)
         {
             wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
 
@@ -97,6 +95,14 @@ namespace AR_Finishings
             {
                 roomNameParam.Set(roomNameValue); // Установка значения параметра
             }
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid roomNumberGuid = new Guid("317bbea6-a1a8-4923-a722-635c998c184d"); // GUID общего параметра
+            Parameter roomNumberParam = wall.get_Parameter(roomNumberGuid);
+            if (roomNumberParam != null && roomNumberParam.StorageType == StorageType.String)
+            {
+                roomNumberParam.Set(roomNumberValue); // Установка значения параметра
+            }
+
         }
 
         public void CutSkirtsAtDoors(IEnumerable<ElementId> roomIds)
