@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Xaml;
@@ -14,6 +15,8 @@ namespace AR_Finishings
     public class RoomBoundarySkirtGenerator
     {
         private Document _doc;
+       //Shared Parameters
+
         private double _skirtHeight;
         private List<Wall> createdWalls = new List<Wall>();
 
@@ -25,14 +28,16 @@ namespace AR_Finishings
         public void CreateWalls(IEnumerable<ElementId> selectedRoomIds, WallType selectedWallType)
         {
             StringBuilder message = new StringBuilder("Generated Skirts for Room IDs:\n");
+            List<Wall> createdWalls = new List<Wall>(); // Список для хранения созданных стен
+
             using (Transaction trans = new Transaction(_doc, "Generate Skirt"))
             {
-                List<Wall> createdWalls = new List<Wall>();
-
                 trans.Start();
+
                 foreach (ElementId roomId in selectedRoomIds)
                 {
                     Room room = _doc.GetElement(roomId) as Room;
+                    string roomNameValue = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString();
                     Level level = _doc.GetElement(room.LevelId) as Level;
                     double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
 
@@ -41,65 +46,59 @@ namespace AR_Finishings
                     {
                         foreach (var segment in boundary)
                         {
-                            Element boundaryElement = _doc.GetElement(segment.ElementId);
+                            ElementId boundaryElementId = segment.ElementId;
+                            Wall boundaryWall = _doc.GetElement(boundaryElementId) as Wall;
 
-                            // Проверяем, является ли элемент стеной с CurtainGrid или имя типа начинается с "АР_О"
-                            Wall boundaryWall = boundaryElement as Wall;
-
-                            if (boundaryWall != null)
+                            if (boundaryWall != null && (boundaryWall.CurtainGrid != null || !boundaryWall.WallType.Name.StartsWith("АР_О")))
                             {
-                                WallType wallType = _doc.GetElement(boundaryWall.GetTypeId()) as WallType;
-                                if (boundaryWall.CurtainGrid != null || (wallType != null && !wallType.Name.StartsWith("АР_О")))
-                                {
-                                    // Пропускаем создание стены, если это витраж или тип стены начинается с "АР_О"
-                                    continue;
-                                }
+                                continue; // Пропускаем, если не соответствует условиям
                             }
 
-                            // Проверяем, является ли элемент разделителем помещений
-                            if (boundaryElement.Category != null &&
-                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_RoomSeparationLines)
-                            {
-                                continue;
-                            }
                             Curve curve = segment.GetCurve();
-                            // Для кривых, которые представляют внешние края стен
                             Curve outerCurve = curve.CreateOffset(selectedWallType.Width / -2.0, XYZ.BasisZ);
-                            // Для кривых, которые представляют внутренние края стен
-                            Curve innerCurve = curve.CreateOffset(selectedWallType.Width / 2.0, XYZ.BasisZ);
+                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, _skirtHeight / 304.8 - roomLowerOffset, 0, false, false);
+                            createdWalls.Add(createdWall); // Добавляем стену в список
 
-                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, (_skirtHeight / 304.8 - roomLowerOffset), 0, false, false);
-                            createdWall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
+                            // Настройка параметров стены
+                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue);
+
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
-                            createdWalls.Add(createdWall);
-
-
-                            // Установка привязки стены к внутренней стороне
-                            Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
-                            if (wallKeyRefParam != null && wallKeyRefParam.StorageType == StorageType.Integer)
-                            {
-                                wallKeyRefParam.Set(3); // 3 соответствует внутренней стороне стены
-                            }
-                            // Установка отмены границы помещения
-                            Parameter wallBoundaries = createdWall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING);
-                            if (wallBoundaries != null && wallBoundaries.StorageType == StorageType.Integer)
-                            {
-                                wallBoundaries.Set(0);
-                            }
-                            // Join walls 
-                            if (boundaryElement != null &&
-                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
-                                createdWall != null)
-                            {
-                                JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
-                            }
                         }
                     }
                 }
+
                 trans.Commit();
             }
+
+            // Выводим сообщение с результатами
+            TaskDialog.Show("Walls Creation Report", message.ToString());
         }
-        // Добавляем новый метод в класс RoomBoundarySkirtGenerator
+
+        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue)
+        {
+            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
+
+            Parameter wallKeyRefParam = wall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
+            if (wallKeyRefParam != null && wallKeyRefParam.StorageType == StorageType.Integer)
+            {
+                wallKeyRefParam.Set(3); // Установка внутренней стороны стены
+            }
+
+            Parameter wallBoundaries = wall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING);
+            if (wallBoundaries != null && wallBoundaries.StorageType == StorageType.Integer)
+            {
+                wallBoundaries.Set(0); // Отмена границы помещения
+            }
+
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid roomNameGuid = new Guid("4a5cec5d-f883-42c3-a05c-89ec822d637b"); // GUID общего параметра
+            Parameter roomNameParam = wall.get_Parameter(roomNameGuid);
+            if (roomNameParam != null && roomNameParam.StorageType == StorageType.String)
+            {
+                roomNameParam.Set(roomNameValue); // Установка значения параметра
+            }
+        }
+
         public void CutSkirtsAtDoors(IEnumerable<ElementId> roomIds)
         {
             using (Transaction trans = new Transaction(_doc, "Cut Skirts at Doors"))
