@@ -1,16 +1,16 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Controls;
 
 namespace AR_Finishings
 {
     public class Preparations
     {
         public StringBuilder ResultMessage { get; } = new StringBuilder();
-        // Метод для проверки доступности VPN
+
         private bool CheckPathToSharedParameter()
         {
             Task<bool> vpnTask = Task.Run(() =>
@@ -19,15 +19,12 @@ namespace AR_Finishings
                 return vpnChecker.IsPathAccess();
             });
 
-            // Ожидание результатов проверки VPN в течение заданного времени
             return vpnTask.Wait(TimeSpan.FromSeconds(2));
         }
 
-        // Основной метод для применения параметров
         public void GetParameters(Document doc)
         {
-            // Определение имени параметра
-            string[] parameterGeometryName = 
+            string[] parameterGeometryName =
             {
                 "DPM_AR_Отделка.Имя",
                 "DPM_AR_Отделка.Имена",
@@ -55,32 +52,48 @@ namespace AR_Finishings
                 return;
             }
 
-            BuiltInCategory[] categories = 
+            BuiltInCategory[] categories =
             {
-            BuiltInCategory.OST_Ceilings,
-            BuiltInCategory.OST_Floors,
-            BuiltInCategory.OST_Walls
+                BuiltInCategory.OST_Ceilings,
+                BuiltInCategory.OST_Floors,
+                BuiltInCategory.OST_Walls
             };
 
             BuiltInCategory rooms = BuiltInCategory.OST_Rooms;
 
-            bool parameterApplied = false; // Переменная для отслеживания статуса применения параметров
+            bool parameterApplied = false;
 
             foreach (var category in categories)
             {
                 bool isParameterApplied = CheckIfParametersApplied(doc, category, parameterGeometryName);
                 if (!isParameterApplied)
                 {
-                    ApplyParameters(doc, new BuiltInCategory[] { category }, parameterGeometryName);
+                    ApplyParameters(doc, new BuiltInCategory[] { category }, parameterGeometryName, "02 Обязательные АРХИТЕКТУРА");
                     parameterApplied = true;
                 }
             }
+
+            string roomsGroupName = "02 Обязательные АРХИТЕКТУРА";
+
             bool isRoomParameterApplied = CheckIfParametersApplied(doc, rooms, parameterRooms);
             if (!isRoomParameterApplied)
             {
-                ApplyParameters(doc, new BuiltInCategory[] { rooms }, parameterRooms);
+                ApplyParameters(doc, new BuiltInCategory[] { rooms }, parameterRooms, roomsGroupName);
+                parameterApplied = true;
             }
-            
+
+            // Применяем общий параметр ADSK_Этаж к категориям из categories и категории rooms
+            string[] commonParameter = { "ADSK_Этаж" };
+            foreach (var category in categories.Concat(new[] { rooms }))
+            {
+                bool isCommonParameterApplied = CheckIfParametersApplied(doc, category, commonParameter);
+                if (!isCommonParameterApplied)
+                {
+                    ApplyParameters(doc, categories.Concat(new[] { rooms }).ToArray(), new[] { "ADSK_Этаж" }, "01 Обязательные ОБЩИЕ");
+                    parameterApplied = true;
+                }
+            }
+
             if (!parameterApplied)
             {
                 TaskDialog.Show("Результат", "Параметры уже применены к всем необходимым категориям.");
@@ -110,15 +123,15 @@ namespace AR_Finishings
                 {
                     if (definition.Name == paramName && binding.Categories.Contains(cat))
                     {
-                        return true; // Параметр применен
+                        return true;
                     }
                 }
             }
 
-            return false; // Ни один из параметров не найден
+            return false;
         }
 
-        private void ApplyParameters(Document doc, BuiltInCategory[] categories, string[] parameterNames)
+        private void ApplyParameters(Document doc, BuiltInCategory[] categories, string[] parameterNames, string groupName)
         {
             using (Transaction t = new Transaction(doc, "Применены параметры к элементам"))
             {
@@ -130,10 +143,10 @@ namespace AR_Finishings
                     throw new InvalidOperationException("Файл общих параметров не найден.");
                 }
 
-                DefinitionGroup group = sharedParameterFile.Groups.get_Item("02 Обязательные АРХИТЕКТУРА");
+                DefinitionGroup group = sharedParameterFile.Groups.get_Item(groupName);
                 if (group == null)
                 {
-                    throw new InvalidOperationException("Parameter group not found.");
+                    throw new InvalidOperationException("Группа параметров не найдена.");
                 }
 
                 CategorySet categorySet = new CategorySet();
@@ -161,12 +174,13 @@ namespace AR_Finishings
                     }
                     if (!bindSuccess)
                     {
-                        throw new InvalidOperationException("Failed to bind parameter.");
+                        throw new InvalidOperationException("Не удалось привязать параметр.");
                     }
                 }
 
                 t.Commit();
             }
         }
+
     }
 }

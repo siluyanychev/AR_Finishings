@@ -40,6 +40,7 @@ namespace AR_Finishings
                     string roomNameValue = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString();
                     string roomNumberValue = room.get_Parameter(BuiltInParameter.ROOM_NUMBER).AsString();
                     Level level = _doc.GetElement(room.LevelId) as Level;
+                    string levelRoomStringValue = room.get_Parameter(BuiltInParameter.LEVEL_NAME).AsString().Split('_')[1];
                     double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
 
                     var boundaries = room.GetBoundarySegments(new SpatialElementBoundaryOptions());
@@ -57,11 +58,17 @@ namespace AR_Finishings
 
                             Curve curve = segment.GetCurve();
                             Curve outerCurve = curve.CreateOffset(selectedWallType.Width / -2.0, XYZ.BasisZ);
-                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, _skirtHeight / 304.8 - roomLowerOffset, 0, false, false);
+                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, _skirtHeight / 304.8 , 0, false, false);
                             createdWalls.Add(createdWall); // Добавляем стену в список
-
+                            // Join walls 
+                            if (boundaryWall != null &&
+                                boundaryWall.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
+                                createdWall != null)
+                            {
+                                JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryWall);
+                            }
                             // Настройка параметров стены
-                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue);
+                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue, levelRoomStringValue);
 
                         }
                     }
@@ -72,7 +79,7 @@ namespace AR_Finishings
 
         }
 
-        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue)
+        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
             wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
 
@@ -101,6 +108,13 @@ namespace AR_Finishings
             if (roomNumberParam != null && roomNumberParam.StorageType == StorageType.String)
             {
                 roomNumberParam.Set(roomNumberValue); // Установка значения параметра
+            }
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid levelGuid = new Guid("9eabf56c-a6cd-4b5c-a9d0-e9223e19ea3f"); // GUID общего параметра
+            Parameter wallLevelParam = wall.get_Parameter(levelGuid);
+            if (wallLevelParam != null && wallLevelParam.StorageType == StorageType.String)
+            {
+                wallLevelParam.Set(levelRoomStringValue); // Установка значения параметра
             }
 
         }
