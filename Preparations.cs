@@ -133,7 +133,7 @@ namespace AR_Finishings
 
         private void ApplyParameters(Document doc, BuiltInCategory[] categories, string[] parameterNames, string groupName)
         {
-            using (Transaction t = new Transaction(doc, "Применены параметры к элементам"))
+            using (Transaction t = new Transaction(doc, "Применение параметров к элементам"))
             {
                 t.Start();
 
@@ -149,38 +149,50 @@ namespace AR_Finishings
                     throw new InvalidOperationException("Группа параметров не найдена.");
                 }
 
-                CategorySet categorySet = new CategorySet();
-                foreach (BuiltInCategory catEnum in categories)
+                BindingMap bindingMap = doc.ParameterBindings;
+                bool anyBindingsAdded = false;
+
+                foreach (var catEnum in categories)
                 {
                     Category cat = doc.Settings.Categories.get_Item(catEnum);
+                    CategorySet categorySet = new CategorySet();
                     categorySet.Insert(cat);
+
+                    InstanceBinding instanceBinding = doc.Application.Create.NewInstanceBinding(categorySet);
+
+                    foreach (var parameterName in parameterNames)
+                    {
+                        ExternalDefinition definition = group.Definitions.get_Item(parameterName) as ExternalDefinition;
+                        if (definition == null)
+                        {
+                            // Если параметр не найден, пропускаем его
+                            continue;
+                        }
+
+                        bool bindSuccess = bindingMap.Insert(definition, instanceBinding, BuiltInParameterGroup.PG_DATA);
+                        if (!bindSuccess && bindingMap.Contains(definition))
+                        {
+                            bindingMap.ReInsert(definition, instanceBinding, BuiltInParameterGroup.PG_DATA);
+                        }
+
+                        if (bindSuccess)
+                        {
+                            anyBindingsAdded = true;
+                        }
+                    }
                 }
 
-                InstanceBinding InstanceBinding = doc.Application.Create.NewInstanceBinding(categorySet);
-                BindingMap bindingMap = doc.ParameterBindings;
-
-                foreach (var parameterName in parameterNames)
+                if (anyBindingsAdded)
                 {
-                    ExternalDefinition definition = group.Definitions.get_Item(parameterName) as ExternalDefinition;
-                    if (definition == null)
-                    {
-                        continue; // Если параметр не найден, пропускаем его
-                    }
-
-                    bool bindSuccess = bindingMap.Insert(definition, InstanceBinding, GroupTypeId.IdentityData);
-                    if (!bindSuccess && bindingMap.Contains(definition))
-                    {
-                        bindSuccess = bindingMap.ReInsert(definition, InstanceBinding, GroupTypeId.IdentityData);
-                    }
-                    if (!bindSuccess)
-                    {
-                        throw new InvalidOperationException("Не удалось привязать параметр.");
-                    }
+                    t.Commit();
                 }
-
-                t.Commit();
+                else
+                {
+                    t.RollBack();
+                }
             }
         }
+
 
     }
 }

@@ -32,6 +32,9 @@ namespace AR_Finishings
                 foreach (ElementId roomId in selectedRoomIds)
                 {
                     Room room = _doc.GetElement(roomId) as Room;
+                    string roomNameValue = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString();
+                    string roomNumberValue = room.get_Parameter(BuiltInParameter.ROOM_NUMBER).AsString();
+                    string levelRoomStringValue = room.get_Parameter(BuiltInParameter.LEVEL_NAME).AsString().Split('_')[1];
                     Level level = _doc.GetElement(room.LevelId) as Level;
                     double roomLowerOffset = room.get_Parameter(BuiltInParameter.ROOM_LOWER_OFFSET).AsDouble();
 
@@ -72,13 +75,6 @@ namespace AR_Finishings
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                             createdWalls.Add(createdWall);
 
-                            // Установка привязки стены к внутренней стороне
-                            Parameter wallKeyRefParam = createdWall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
-                            if (wallKeyRefParam != null && wallKeyRefParam.StorageType == StorageType.Integer)
-                            {
-                                wallKeyRefParam.Set(3); // 3 соответствует внутренней стороне стены
-                            }
-
                             // Join walls 
                             if (boundaryElement != null &&
                                 boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
@@ -86,6 +82,7 @@ namespace AR_Finishings
                             {
                                 JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
                             }
+                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue, levelRoomStringValue);
                         }
                     }
                 }
@@ -95,6 +92,38 @@ namespace AR_Finishings
             }
 
 
+
+        }
+        private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
+        {
+            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).Set(roomLowerOffset);
+
+            Parameter wallKeyRefParam = wall.get_Parameter(BuiltInParameter.WALL_KEY_REF_PARAM);
+            if (wallKeyRefParam != null && wallKeyRefParam.StorageType == StorageType.Integer)
+            {
+                wallKeyRefParam.Set(3); // Установка внутренней стороны стены
+            }
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid roomNameGuid = new Guid("4a5cec5d-f883-42c3-a05c-89ec822d637b"); // GUID общего параметра
+            Parameter roomNameParam = wall.get_Parameter(roomNameGuid);
+            if (roomNameParam != null && roomNameParam.StorageType == StorageType.String)
+            {
+                roomNameParam.Set(roomNameValue); // Установка значения параметра
+            }
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid roomNumberGuid = new Guid("317bbea6-a1a8-4923-a722-635c998c184d"); // GUID общего параметра
+            Parameter roomNumberParam = wall.get_Parameter(roomNumberGuid);
+            if (roomNumberParam != null && roomNumberParam.StorageType == StorageType.String)
+            {
+                roomNumberParam.Set(roomNumberValue); // Установка значения параметра
+            }
+            // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
+            Guid levelGuid = new Guid("9eabf56c-a6cd-4b5c-a9d0-e9223e19ea3f"); // GUID общего параметра
+            Parameter wallLevelParam = wall.get_Parameter(levelGuid);
+            if (wallLevelParam != null && wallLevelParam.StorageType == StorageType.String)
+            {
+                wallLevelParam.Set(levelRoomStringValue); // Установка значения параметра
+            }
 
         }
 
