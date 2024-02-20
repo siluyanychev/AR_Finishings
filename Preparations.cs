@@ -133,59 +133,55 @@ namespace AR_Finishings
 
         private void ApplyParameters(Document doc, BuiltInCategory[] categories, string[] parameterNames, string groupName)
         {
-            // Начинаем новую транзакцию
-            using (Transaction t = new Transaction(doc, "Добавление параметров к категориям"))
+            using (Transaction t = new Transaction(doc, "Применение параметров"))
             {
                 t.Start();
 
-                // Открываем файл общих параметров
                 DefinitionFile sharedParameterFile = doc.Application.OpenSharedParameterFile();
                 if (sharedParameterFile == null)
                 {
                     throw new InvalidOperationException("Файл общих параметров не найден.");
                 }
 
-                // Получаем группу общих параметров по имени
                 DefinitionGroup group = sharedParameterFile.Groups.get_Item(groupName);
                 if (group == null)
                 {
-                    throw new InvalidOperationException("Группа параметров не найдена.");
+                    throw new InvalidOperationException($"Группа параметров '{groupName}' не найдена.");
                 }
 
-                // Проходимся по всем категориям и параметрам, добавляя их в карту привязки
-                foreach (var catEnum in categories)
+                BindingMap bindingMap = doc.ParameterBindings;
+
+                foreach (BuiltInCategory catEnum in categories)
                 {
                     Category cat = doc.Settings.Categories.get_Item(catEnum);
+                    CategorySet categorySet = new CategorySet();
+                    categorySet.Insert(cat);
 
                     foreach (string parameterName in parameterNames)
                     {
                         ExternalDefinition definition = group.Definitions.get_Item(parameterName) as ExternalDefinition;
                         if (definition != null)
                         {
-                            // Проверяем, существует ли уже привязка
-                            Binding binding = doc.ParameterBindings.get_Item(definition);
-                            if (binding is InstanceBinding instanceBinding)
+                            bool bindSuccess = bindingMap.Insert(definition, doc.Application.Create.NewInstanceBinding(categorySet), GroupTypeId.Data);
+
+                            if (!bindSuccess)
                             {
-                                // Если привязка существует, добавляем категорию
-                                instanceBinding.Categories.Insert(cat);
-                                doc.ParameterBindings.ReInsert(definition, instanceBinding);
-                            }
-                            else
-                            {
-                                // Если привязки нет, создаем новую с данной категорией
-                                CategorySet categorySet = new CategorySet();
-                                categorySet.Insert(cat);
-                                InstanceBinding newBinding = doc.Application.Create.NewInstanceBinding(categorySet);
-                                doc.ParameterBindings.Insert(definition, newBinding);
+                                // Если параметр уже привязан, обновляем его привязку
+                                ElementBinding existingBinding = bindingMap.get_Item(definition) as ElementBinding;
+                                if (existingBinding != null)
+                                {
+                                    existingBinding.Categories.Insert(cat);
+                                    bindingMap.ReInsert(definition, existingBinding);
+                                }
                             }
                         }
                     }
                 }
 
-                // Подтверждаем транзакцию
                 t.Commit();
             }
         }
+
 
 
 

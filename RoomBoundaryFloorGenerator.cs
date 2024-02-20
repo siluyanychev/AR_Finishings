@@ -55,7 +55,6 @@ namespace AR_Finishings
                                 {
                                     Floor floor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
                                     floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
-                                    message.AppendLine($"Room ID: {roomId.Value}, Floor ID: {floor.Id.Value}");
                                     // Setting parameters
                                     SetupFloorParameters(floor, roomNameValue, roomNumberValue, levelRoomStringValue);
                                 }
