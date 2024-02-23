@@ -71,6 +71,8 @@
       <DependentUpon>Strings.resx</DependentUpon>
     </Compile>
     <Compile Include="ElementTypeSelector.cs" />
+    <Compile Include="ValuesForGeometry.cs" />
+    <Compile Include="ValuesForRooms.cs" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="MainWindow.xaml">

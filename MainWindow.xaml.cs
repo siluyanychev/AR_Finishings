@@ -31,14 +31,7 @@ namespace AR_Finishings
         public double SkirtsHeight { get; set; } = 100; // Значение по умолчанию для высоты плинтусов
         private bool _isParametersCheckboxChecked;
 
-        private void CheckBox_ValsForElements(object sender, RoutedEventArgs e)
-        {
-            // Логика обработки события для CheckBox_ValsForElements
-        }
-        private void CheckBox_ValsForRooms(object sender, RoutedEventArgs e)
-        {
-            // Логика обработки события для CheckBox_ValsForRooms
-        }
+        
 
         private void UpdateFloorTypes()
         {
@@ -73,14 +66,6 @@ namespace AR_Finishings
             UIDocument uidoc = commandData.Application.ActiveUIDocument;
             _selectedRoomIds = uidoc.Selection.GetElementIds().Where(id =>
                 uidoc.Document.GetElement(id) is Room).ToList();
-
-            if (!_selectedRoomIds.Any())
-            {
-                // Если не были выбраны помещения, показать сообщение и закрыть плагин
-                MessageBox.Show("Please select rooms before running this plugin.");
-                this.Close();
-                return;
-            }
 
             // Инициализация классов для работы с элементами
             ets = new ElementTypeSelector();
@@ -145,5 +130,20 @@ namespace AR_Finishings
                 skirtGenerator.CutSkirtsAtDoors(_selectedRoomIds);
             }
         }
+        // Update
+        private void CheckBox_ValsForElements(object sender, RoutedEventArgs e)
+        {
+            // Логика обработки события для CheckBox_ValsForElements
+        }
+        private void CheckBox_ValsForRooms(object sender, RoutedEventArgs e)
+        {
+            // Логика обработки события для CheckBox_ValsForRooms
+        }
+        private void UpdateButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Код для обновления данных, не требующий выбора помещений
+            // ...
+        }
+
     }
 }

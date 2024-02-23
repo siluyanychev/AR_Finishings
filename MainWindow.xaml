@@ -54,7 +54,7 @@
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="13,10,0,10" Grid.ColumnSpan="3" Width="375">
             <CheckBox Content="Set Values for elements" Checked="CheckBox_ValsForElements" Unchecked="CheckBox_ValsForElements" />
             <CheckBox Content="Set Values for Rooms" Checked="CheckBox_ValsForRooms" Unchecked="CheckBox_ValsForRooms" />
-            <Button Content="UPDATE" Width="80" Margin="10,0,0,0" Height="40" />
+            <Button Content="UPDATE" Click="UpdateButton_Click" Width="80" Margin="10,0,0,0" Height="40" />
         </StackPanel>
     </Grid>
 </Window>
