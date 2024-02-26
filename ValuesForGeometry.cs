@@ -12,6 +12,7 @@ namespace AR_Finishings
         private const string RoomNumberParam = "DPM_AR_Отделка.Номер";
         private const string RoomNumbersParam = "DPM_AR_Отделка.Номера";
 
+
         public ValuesForGeometry(Document doc)
         {
             _doc = doc;
@@ -44,8 +45,9 @@ namespace AR_Finishings
 
         private void SetRoomNumbersForType(List<Element> elements, string category)
         {
-            // Группировка элементов по типам
-            var elementsByType = elements.GroupBy(e => e.GetTypeId()).ToList();
+            // Группировка элементов по типам с уже заполненным параметром DPM_AR_Отделка.Номер
+            var elementsByType = elements.Where(e => e.LookupParameter(RoomNumberParam)?.AsString() != null)
+                                         .GroupBy(e => e.GetTypeId()).ToList();
 
             using (Transaction trans = new Transaction(_doc, "Set Room Numbers For Type"))
             {
@@ -84,17 +86,30 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
-        private List<Element> GetAllInstances(IEnumerable<ElementId> categoryIds)
+
+        // И использование этого метода для кажд
+
+        private List<Element> GetAllInstances(IEnumerable<ElementId> typeIds)
         {
-            List<Element> instances = new List<Element>();
-            foreach (ElementId categoryId in categoryIds)
+            List<Element> instancesWithRoomNumber = new List<Element>();
+            foreach (ElementId typeId in typeIds)
             {
-                instances.AddRange(new FilteredElementCollector(_doc)
-                                   .OfCategoryId(categoryId)
-                                   .WhereElementIsNotElementType()
-                                   .ToList());
+                var elements = new FilteredElementCollector(_doc)
+                               .OfClass(typeof(Floor)) // Замените на соответствующий класс элемента
+                               .OfCategory(BuiltInCategory.OST_Floors)
+                               .WhereElementIsNotElementType()
+                               .ToList();
+
+                // Фильтруем элементы, которые имеют значение в параметре DPM_AR_Отделка.Номер
+                var filteredElements = elements.Where(e =>
+                {
+                    var param = e.LookupParameter(RoomNumberParam);
+                    return param != null && param.HasValue && !string.IsNullOrWhiteSpace(param.AsString());
+                });
+
+                instancesWithRoomNumber.AddRange(filteredElements);
             }
-            return instances;
+            return instancesWithRoomNumber;
         }
 
     }
