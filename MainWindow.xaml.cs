@@ -29,9 +29,12 @@ namespace AR_Finishings
         public double CeilingsHeight { get; set; } = 3100; // Значение по умолчанию для высоты потолков
         public double WallsOffset { get; set; } = 100; // Значение по умолчанию для отступа по высоте стены за потолком 
         public double SkirtsHeight { get; set; } = 100; // Значение по умолчанию для высоты плинтусов
-        private bool _isParametersCheckboxChecked;
 
-        
+        private bool _isParametersCheckboxChecked;
+        private bool _isValsForElementsChecked = false;
+
+
+
 
         private void UpdateFloorTypes()
         {
@@ -57,6 +60,16 @@ namespace AR_Finishings
             selectSkirtsComboBox.ItemsSource = wallTypes;
             selectSkirtsComboBox.DisplayMemberPath = "Name";
         }
+        private void CheckBox_ValsForElements_Checked(object sender, RoutedEventArgs e)
+{
+    _isValsForElementsChecked = true;
+}
+
+private void CheckBox_ValsForElements_Unchecked(object sender, RoutedEventArgs e)
+{
+    _isValsForElementsChecked = false;
+}
+
         public MainWindow(ExternalCommandData commandData)
         {
             InitializeComponent();
@@ -91,6 +104,7 @@ namespace AR_Finishings
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
             CeilingType selectedCeilingType = selectCeilingsComboBox.SelectedItem as CeilingType;
             WallType selectedWallType = selectWallsComboBox.SelectedItem as WallType;
+
 
             if (_isParametersCheckboxChecked)
             {
@@ -133,7 +147,8 @@ namespace AR_Finishings
         // Update
         private void CheckBox_ValsForElements(object sender, RoutedEventArgs e)
         {
-            // Логика обработки события для CheckBox_ValsForElements
+            _isValsForElementsChecked = true;
+
         }
         private void CheckBox_ValsForRooms(object sender, RoutedEventArgs e)
         {
@@ -141,8 +156,13 @@ namespace AR_Finishings
         }
         private void UpdateButton_Click(object sender, RoutedEventArgs e)
         {
-            // Код для обновления данных, не требующий выбора помещений
-            // ...
+            if (_isValsForElementsChecked)
+            {
+                var valuesForGeometry = new ValuesForGeometry(mainDocument);
+                valuesForGeometry.SetNumbersAndNamesToGeom();
+                // Сброс флага, если нужно выполнить действие только один раз
+                _isValsForElementsChecked = false;
+            }
         }
 
     }
