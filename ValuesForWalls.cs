@@ -2,83 +2,89 @@
 using Autodesk.Revit.UI;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Controls;
 
 namespace AR_Finishings
 {
-    internal class ValuesForGeometry
+    internal class ValuesForWalls
     {
         private Document _doc;
         private const string RoomNumberParam = "DPM_AR_Отделка.Номер";
         private const string RoomNumbersParam = "DPM_AR_Отделка.Номера";
+        private const string RoomNameParam = "DPM_AR_Отделка.Имя";
+        private const string RoomNamesParam = "DPM_AR_Отделка.Имена";
 
-
-        public ValuesForGeometry(Document doc)
+        public ValuesForWalls(Document doc)
         {
             _doc = doc;
         }
 
-        public void SetNumbersAndNamesToGeom()
+        public void SetToGeom()
         {
-            // Получаем все типы элементов
+            // Получаем все типы полов
             ElementTypeSelector selector = new ElementTypeSelector();
-            var floorTypes = selector.GetFloorTypes(_doc);
-            var ceilingTypes = selector.GetCeilingTypes(_doc);
             var wallTypes = selector.GetWallTypes(_doc);
 
-            // Получаем ID категорий для каждого типа элемента
-            var floorCategoryIds = floorTypes.Select(ft => ft.Category.Id);
-            var ceilingCategoryIds = ceilingTypes.Select(ct => ct.Category.Id);
-            var wallCategoryIds = wallTypes.Select(wt => wt.Category.Id);
+            // Получаем ID категорий для типов полов
+            var wallCategoryIds = wallTypes.Select(ft => ft.Category.Id);
 
-            // Получаем все экземпляры элементов
-            var floors = GetAllInstances(floorCategoryIds);
-            var ceilings = GetAllInstances(ceilingCategoryIds);
+            // Получаем все экземпляры полов
             var walls = GetAllInstances(wallCategoryIds);
 
-            // Сортируем и устанавливаем номера помещений
-            SetRoomNumbersForType(floors, "Floors");
-            SetRoomNumbersForType(ceilings, "Ceilings");
-            SetRoomNumbersForType(walls, "Walls");
+            // Сортируем и устанавливаем номера помещений для полов
+            SetRoomNumbersAndNamesForType(walls, "Walls");
         }
 
-
-        private void SetRoomNumbersForType(List<Element> elements, string category)
+        private void SetRoomNumbersAndNamesForType(List<Element> elements, string category)
         {
-            // Группировка элементов по типам с уже заполненным параметром DPM_AR_Отделка.Номер
+            // Группировка элементов по типам с уже заполненным параметром RoomNumberParam
             var elementsByType = elements.Where(e => e.LookupParameter(RoomNumberParam)?.AsString() != null)
                                          .GroupBy(e => e.GetTypeId()).ToList();
 
-            using (Transaction trans = new Transaction(_doc, "Set Room Numbers For Type"))
+            using (Transaction trans = new Transaction(_doc, "Set Room Numbers and Names for " + category))
             {
                 trans.Start();
 
                 // Обработка каждого типа
                 foreach (var typeGroup in elementsByType)
                 {
-                    var typeElements = typeGroup.ToList();
                     var roomNumbersForType = new HashSet<string>();
+                    var roomNamesForType = new List<string>();  // Для хранения имен помещений
 
-                    // Сбор номеров помещений для текущего типа
-                    foreach (var element in typeElements)
+                    // Сбор номеров и имен помещений для текущего типа
+                    foreach (var element in typeGroup)
                     {
                         var roomNumber = element.LookupParameter(RoomNumberParam)?.AsString();
+                        var roomName = element.LookupParameter(RoomNameParam)?.AsString();
                         if (!string.IsNullOrEmpty(roomNumber))
                         {
                             roomNumbersForType.Add(roomNumber);
                         }
+                        if (!string.IsNullOrEmpty(roomName))
+                        {
+                            // Если имя уже есть в списке, не добавляем его снова
+                            if (!roomNamesForType.Contains(roomName))
+                            {
+                                roomNamesForType.Add(roomName);
+                            }
+                        }
                     }
 
-                    // Преобразование HashSet в строку
+                    // Преобразование HashSet и List в строки
                     var combinedRoomNumbers = string.Join(", ", roomNumbersForType.OrderBy(n => n));
+                    var combinedRoomNames = string.Join(", ", roomNamesForType.OrderBy(n => n));  // Имена могут повторяться, поэтому не используем HashSet
 
-                    // Присвоение этой строки параметру DPM_AR_Отделка.Номера каждого экземпляра
-                    foreach (var element in typeElements)
+                    // Присвоение этих строк параметрам каждого экземпляра
+                    foreach (var element in typeGroup)
                     {
                         var roomNumbersParam = element.LookupParameter(RoomNumbersParam);
+                        var roomNamesParam = element.LookupParameter(RoomNamesParam);
                         if (roomNumbersParam != null && roomNumbersParam.StorageType == StorageType.String)
                         {
                             roomNumbersParam.Set(combinedRoomNumbers);
+                        }
+                        if (roomNamesParam != null && roomNamesParam.StorageType == StorageType.String)
+                        {
+                            roomNamesParam.Set(combinedRoomNames);
                         }
                     }
                 }
@@ -86,6 +92,7 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
+
 
         // И использование этого метода для кажд
 
@@ -95,8 +102,8 @@ namespace AR_Finishings
             foreach (ElementId typeId in typeIds)
             {
                 var elements = new FilteredElementCollector(_doc)
-                               .OfClass(typeof(Floor)) // Замените на соответствующий класс элемента
-                               .OfCategory(BuiltInCategory.OST_Floors)
+                               .OfClass(typeof(Wall)) // Замените на соответствующий класс элемента
+                               .OfCategory(BuiltInCategory.OST_Walls)
                                .WhereElementIsNotElementType()
                                .ToList();
 
@@ -115,4 +122,3 @@ namespace AR_Finishings
     }
 }
 
-            

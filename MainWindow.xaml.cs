@@ -158,8 +158,12 @@ private void CheckBox_ValsForElements_Unchecked(object sender, RoutedEventArgs e
         {
             if (_isValsForElementsChecked)
             {
-                var valuesForGeometry = new ValuesForGeometry(mainDocument);
-                valuesForGeometry.SetNumbersAndNamesToGeom();
+                var valuesForFloors = new ValuesForFloors(mainDocument);
+                valuesForFloors.SetToGeom();
+                var valuesForCeilings = new ValuesForCeilings(mainDocument);
+                valuesForCeilings.SetToGeom();
+                var valuesForWalls = new ValuesForWalls(mainDocument);
+                valuesForWalls.SetToGeom();
                 // Сброс флага, если нужно выполнить действие только один раз
                 _isValsForElementsChecked = false;
             }
