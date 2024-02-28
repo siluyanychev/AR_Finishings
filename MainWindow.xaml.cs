@@ -32,6 +32,7 @@ namespace AR_Finishings
 
         private bool _isParametersCheckboxChecked;
         private bool _isValsForElementsChecked = false;
+        private bool _isValsForRoomsChecked = false;
 
 
 
@@ -61,14 +62,13 @@ namespace AR_Finishings
             selectSkirtsComboBox.DisplayMemberPath = "Name";
         }
         private void CheckBox_ValsForElements_Checked(object sender, RoutedEventArgs e)
-{
-    _isValsForElementsChecked = true;
-}
-
-private void CheckBox_ValsForElements_Unchecked(object sender, RoutedEventArgs e)
-{
-    _isValsForElementsChecked = false;
-}
+        {
+            _isValsForElementsChecked = true;
+        }
+        private void CheckBox_ValsForRooms_Checked(object sender, RoutedEventArgs e)
+        {
+            _isValsForRoomsChecked = true;
+        }
 
         public MainWindow(ExternalCommandData commandData)
         {
@@ -152,7 +152,7 @@ private void CheckBox_ValsForElements_Unchecked(object sender, RoutedEventArgs e
         }
         private void CheckBox_ValsForRooms(object sender, RoutedEventArgs e)
         {
-            // Логика обработки события для CheckBox_ValsForRooms
+            _isValsForRoomsChecked = true;
         }
         private void UpdateButton_Click(object sender, RoutedEventArgs e)
         {
@@ -164,8 +164,19 @@ private void CheckBox_ValsForElements_Unchecked(object sender, RoutedEventArgs e
                 valuesForCeilings.SetToGeom();
                 var valuesForWalls = new ValuesForWalls(mainDocument);
                 valuesForWalls.SetToGeom();
+
+
+
                 // Сброс флага, если нужно выполнить действие только один раз
                 _isValsForElementsChecked = false;
+            }
+            if (_isValsForRoomsChecked)
+            {
+                var valuesForRooms = new ValuesForRooms(mainDocument);
+                valuesForRooms.UpdateRoomParameters();
+
+                // Сброс флага, если нужно выполнить действие только один раз
+                _isValsForRoomsChecked = false;
             }
         }
 
