@@ -52,11 +52,11 @@ namespace AR_Finishings
                 // Получаем первый и последний номер помещения для именования транзакции
                 string firstRoomNumber = rooms.First().Number;
                 string lastRoomNumber = rooms.Last().Number;
-                transactionName = $"Update floor types rooms from {firstRoomNumber} to {lastRoomNumber}";
+                transactionName = $"Update bounding types rooms from {firstRoomNumber} to {lastRoomNumber}";
             }
             else
             {
-                transactionName = "Update floor types - No rooms found";
+                transactionName = "Update bounding types - No rooms found";
             }
 
             using (Transaction trans = new Transaction(_doc, transactionName))
@@ -68,10 +68,13 @@ namespace AR_Finishings
                     string roomNumber = room.Number; // Получаем номер комнаты
                     var roomFloors = GetFloors(roomNumber);
                     var roomCeilings = GetCeilings(roomNumber);
+                    var roomWalls = GetWalls(roomNumber);
                     // Продолжаем с другими категориями, если необходимо
 
                     // Обновляем параметры слоев в помещении
-                    UpdateRoomLayerName(room, roomFloors, RoomFloorLayerName);
+                    UpdateRoomFloorLayerName(room, roomFloors, RoomFloorLayerName);
+                    UpdateRoomCeilingLayerName(room, roomCeilings, RoomCeilingLayerName);
+                    UpdateRoomWallLayerName(room, roomWalls, RoomWallLayerName);
                     // Продолжаем обновление для потолков и других элементов
                 }
 
@@ -81,7 +84,7 @@ namespace AR_Finishings
 
 
 
-
+        // Getters
         public List<Floor> GetFloors(string roomNumber)
         {
             FilteredElementCollector collector = new FilteredElementCollector(_doc);
@@ -91,20 +94,6 @@ namespace AR_Finishings
             List<Floor> floors = allFloors.Where(floor => IsFloorWithRoomNumber(floor, roomNumber)).ToList();
 
             return floors;
-        }
-
-        // Метод для обновления имени слоя в помещении
-        private void UpdateRoomLayerName(Room room, List<Floor> floors, string parameterName)
-        {
-            // Сортируем типы полов по имени и создаем строку для записи в параметр
-            string typesName = string.Join("\n", floors.Select(f => f.FloorType.Name).Distinct().OrderBy(n => n));
-
-            // Находим параметр помещения и обновляем его
-            Parameter param = room.LookupParameter(RoomFloorLayerName);
-            if (param != null && param.StorageType == StorageType.String)
-            {
-                param.Set(typesName);
-            }
         }
         public List<Ceiling> GetCeilings(string roomNumber)
         {
@@ -116,6 +105,54 @@ namespace AR_Finishings
 
             return ceilings;
         }
+        public List<Wall> GetWalls(string roomNumber)
+        {
+            FilteredElementCollector collector = new FilteredElementCollector(_doc);
+            List<Wall> allWalls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType().OfType<Wall>().ToList();
+
+            // Фильтруем полы, оставляя только те, у которых параметр "Номер" содержит заданное значение
+            List<Wall> walls = allWalls.Where(wall => IsWallWithRoomNumber(wall, roomNumber)).ToList();
+
+            return walls;
+        }
+        // Метод для обновления имени слоя в помещении
+        private void UpdateRoomFloorLayerName(Room room, List<Floor> floors, string parameterName)
+        {
+            // Сортируем типы полов по имени и создаем строку для записи в параметр
+            string typesName = string.Join("\n", floors.Select(f => f.Name).Distinct().OrderBy(n => n));
+
+            // Находим параметр помещения и обновляем его
+            Parameter param = room.LookupParameter(RoomFloorLayerName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(typesName);
+            }
+        }
+        private void UpdateRoomCeilingLayerName(Room room, List<Ceiling> ceilings, string parameterName)
+        {
+            // Сортируем типы полов по имени и создаем строку для записи в параметр
+            string typesName = string.Join("\n", ceilings.Select(f => f.Name).Distinct().OrderBy(n => n));
+
+            // Находим параметр помещения и обновляем его
+            Parameter param = room.LookupParameter(RoomCeilingLayerName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(typesName);
+            }
+        }
+        private void UpdateRoomWallLayerName(Room room, List<Wall> walls, string parameterName)
+        {
+            // Сортируем типы полов по имени и создаем строку для записи в параметр
+            string typesName = string.Join("\n", walls.Select(f => f.Name).Distinct().OrderBy(n => n));
+
+            // Находим параметр помещения и обновляем его
+            Parameter param = room.LookupParameter(RoomWallLayerName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(typesName);
+            }
+        }
+
 
 
 
@@ -152,6 +189,17 @@ namespace AR_Finishings
             // Проверяем, содержит ли параметр заданное значение
             string ceilingRoomNumber = roomNumberParam != null ? roomNumberParam.AsString() : string.Empty;
             return ceilingRoomNumber == roomNumber;
+        }
+
+        // Walls
+        private bool IsWallWithRoomNumber(Wall wall, string roomNumber)
+        {
+            // Получаем значение параметра "Номер" для данного пола
+            Parameter roomNumberParam = wall.LookupParameter(RoomNumberParam);
+
+            // Проверяем, содержит ли параметр заданное значение
+            string wallRoomNumber = roomNumberParam != null ? roomNumberParam.AsString() : string.Empty;
+            return wallRoomNumber == roomNumber;
         }
 
 
