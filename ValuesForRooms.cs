@@ -1,7 +1,9 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace AR_Finishings
 {
@@ -115,19 +117,42 @@ namespace AR_Finishings
 
             return walls;
         }
-        // Метод для обновления имени слоя в помещении
         private void UpdateRoomFloorLayerName(Room room, List<Floor> floors, string parameterName)
         {
-            // Сортируем типы полов по имени и создаем строку для записи в параметр
-            string typesName = string.Join("\n", floors.Select(f => f.Name).Distinct().OrderBy(n => n));
+            // Инициализируем словарь для сопоставления марок с их составом
+            var typesDescriptions = new Dictionary<string, string>();
 
-            // Находим параметр помещения и обновляем его
+            // Перебираем все полы в помещении
+            foreach (Floor floor in floors)
+            {
+                // Получаем значения параметров для каждого пола
+                string mark = floor.FloorType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")).AsString(); // Замените на GUID параметра ADSK_Марка
+                string composition = floor.FloorType.get_Parameter(new Guid("92f979b3-1252-42e1-92aa-b4a9337e285f")).AsString(); // Замените на GUID параметра DPM_X_Слои.Состав
+
+                // Добавляем в словарь или обновляем существующую запись
+                if (!typesDescriptions.ContainsKey(mark))
+                {
+                    typesDescriptions[mark] = composition;
+                }
+            }
+
+            // Сортируем словарь по ключам (маркам) и формируем итоговую строку
+            var sortedDescriptions = typesDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder typesDescription = new StringBuilder();
+            foreach (var kvp in sortedDescriptions)
+            {
+                typesDescription.AppendLine($"{kvp.Key}:\n{kvp.Value}");
+            }
+
+            // Находим параметр помещения и обновляем его многострочным текстом
             Parameter param = room.LookupParameter(RoomFloorLayerName);
             if (param != null && param.StorageType == StorageType.String)
             {
-                param.Set(typesName);
+                param.Set(typesDescription.ToString());
             }
         }
+
+
         private void UpdateRoomCeilingLayerName(Room room, List<Ceiling> ceilings, string parameterName)
         {
             // Сортируем типы полов по имени и создаем строку для записи в параметр
