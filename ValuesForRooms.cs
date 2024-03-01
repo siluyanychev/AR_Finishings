@@ -1,5 +1,6 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
+using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -70,13 +71,24 @@ namespace AR_Finishings
                     string roomNumber = room.Number; // Получаем номер комнаты
                     var roomFloors = GetFloors(roomNumber);
                     var roomCeilings = GetCeilings(roomNumber);
-                    var roomWalls = GetWalls(roomNumber);
+
+                    List<Wall> allWalls = GetWalls(roomNumber);
+                    // Генерируем отфильтрованные списки
+                    List<Wall> finishingMainWalls = GetFinishingMainWalls(allWalls);
+                    List<Wall> finishingColumnWalls = GetFinishingColumnWalls(allWalls);
+                    List<Wall> finishingSkirtWalls = GetFinishingSkirtWalls(allWalls);
                     // Продолжаем с другими категориями, если необходимо
 
                     // Обновляем параметры слоев в помещении
                     UpdateRoomFloorLayerName(room, roomFloors, RoomFloorLayerName);
+                    UpdateRoomFloorLayerArea(room, roomFloors, RoomFloorLayerArea);
                     UpdateRoomCeilingLayerName(room, roomCeilings, RoomCeilingLayerName);
-                    UpdateRoomWallLayerName(room, roomWalls, RoomWallLayerName);
+                    UpdateRoomCeilingLayerArea(room, roomCeilings, RoomCeilingLayerArea);
+                    UpdateRoomCeilingHeight(room, roomCeilings, RoomCeilingLayerHeight);
+                    UpdateRoomWallLayerName(room, finishingMainWalls, RoomWallLayerName);
+                    //UpdateRoomWallLayerArea(room, finishingMainWalls, RoomWallLayerArea);
+
+
                     // Продолжаем обновление для потолков и других элементов
                 }
 
@@ -110,29 +122,84 @@ namespace AR_Finishings
         public List<Wall> GetWalls(string roomNumber)
         {
             FilteredElementCollector collector = new FilteredElementCollector(_doc);
-            List<Wall> allWalls = collector.OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType().OfType<Wall>().ToList();
+            List<Wall> allWalls = collector.OfCategory(BuiltInCategory.OST_Walls)
+                                            .WhereElementIsNotElementType()
+                                            .OfType<Wall>()
+                                            .ToList();
 
-            // Фильтруем полы, оставляя только те, у которых параметр "Номер" содержит заданное значение
-            List<Wall> walls = allWalls.Where(wall => IsWallWithRoomNumber(wall, roomNumber)).ToList();
+            // Фильтруем стены, оставляя только те, у которых параметр "Номер" содержит заданное значение
+            // и имя типа начинается с "АР_О"
+            List<Wall> walls = allWalls.Where(wall =>
+                IsWallWithRoomNumber(wall, roomNumber) &&
+                wall.WallType != null &&
+                wall.WallType.Name.StartsWith("АР_О"))
+                .ToList();
 
             return walls;
+
+
+
         }
+        // Метод для получения основных отделочных стен
+        public List<Wall> GetFinishingMainWalls(List<Wall> walls)
+        {
+            return walls.Where(wall =>
+                wall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING).AsInteger() == 1 &&
+                wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() > 150 / 304.8) // Переводим 150мм в футы
+                .ToList();
+        }
+        // Метод для получения стен-колонн
+        public List<Wall> GetFinishingColumnWalls(List<Wall> walls)
+        {
+            return walls.Where(wall =>
+                wall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING).AsInteger() == 1 &&
+                wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() > 150 / 304.8 && // Переводим 150мм в футы
+                wall.LookupParameter("Comments").AsString() == "Колонна") // Предполагается, что "Comments" - это ваш пользовательский параметр
+                .ToList();
+        }
+
+        // Метод для получения плинтусов
+        public List<Wall> GetFinishingSkirtWalls(List<Wall> walls)
+        {
+            return walls.Where(wall =>
+                wall.get_Parameter(BuiltInParameter.WALL_ATTR_ROOM_BOUNDING).AsInteger() == 0 &&
+                wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() <= 150 / 304.8) // Переводим 150мм в футы
+                .ToList();
+        }
+
+
+        // Floors
         private void UpdateRoomFloorLayerName(Room room, List<Floor> floors, string parameterName)
         {
             // Инициализируем словарь для сопоставления марок с их составом
             var typesDescriptions = new Dictionary<string, string>();
 
-            // Перебираем все полы в помещении
             foreach (Floor floor in floors)
             {
-                // Получаем значения параметров для каждого пола
-                string mark = floor.FloorType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")).AsString(); // Замените на GUID параметра ADSK_Марка
-                string composition = floor.FloorType.get_Parameter(new Guid("92f979b3-1252-42e1-92aa-b4a9337e285f")).AsString(); // Замените на GUID параметра DPM_X_Слои.Состав
+                Parameter markParam = floor.FloorType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")); // ADSK_Этаж
+                Parameter compositionParam = floor.FloorType.get_Parameter(new Guid("92f979b3-1252-42e1-92aa-b4a9337e285f")); // Слои.Состав
 
-                // Добавляем в словарь или обновляем существующую запись
-                if (!typesDescriptions.ContainsKey(mark))
+                if (markParam != null && compositionParam != null)
                 {
-                    typesDescriptions[mark] = composition;
+                    string mark = markParam.AsString();
+                    string composition = compositionParam.AsString();
+
+                    if (mark != null) // Проверка на null
+                    {
+                        typesDescriptions[mark] = composition;
+                    }
+                    else
+                    {
+                        // Отображаем TaskDialog, предупреждающий пользователя
+                        TaskDialog dialog = new TaskDialog("Неопределенная марка")
+                        {
+                            MainInstruction = "Заполните 'ADSK_марка' в полах",
+                            MainContent = "Один из полов не имеет определенной марки, что может вызвать ошибки.",
+                            CommonButtons = TaskDialogCommonButtons.Close,
+                            DefaultButton = TaskDialogResult.Close
+                        };
+                        dialog.Show();
+                    }
                 }
             }
 
@@ -151,37 +218,285 @@ namespace AR_Finishings
                 param.Set(typesDescription.ToString());
             }
         }
+        private void UpdateRoomFloorLayerArea(Room room, List<Floor> floors, string parameterName)
+        {
+            var typesDescriptions = new Dictionary<string, double>();
 
+            foreach (Floor floor in floors)
+            {
+                Parameter markParam = floor.FloorType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")); // ADSK_Этаж
+                if (markParam == null || string.IsNullOrEmpty(markParam.AsString()))
+                {
+                    // Отображаем TaskDialog, предупреждающий пользователя
+                    TaskDialog dialog = new TaskDialog("Неопределенная марка")
+                    {
+                        MainInstruction = "Заполните 'ADSK_марка' в полах",
+                        MainContent = "Один из полов не имеет определенной марки, что может вызвать ошибки.",
+                        CommonButtons = TaskDialogCommonButtons.Close,
+                        DefaultButton = TaskDialogResult.Close
+                    };
+                    dialog.Show();
+                    continue; // Пропускаем этот пол и продолжаем с остальными
+                }
 
+                string mark = markParam.AsString();
+                double area = floor.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble() * 0.092903; // Преобразуем площадь в метры квадратные
+
+                if (!typesDescriptions.ContainsKey(mark))
+                {
+                    typesDescriptions[mark] = area;
+                }
+                else
+                {
+                    typesDescriptions[mark] += area; // Суммируем площади одинаковых типов полов
+                }
+            }
+
+            var sortedDescriptions = typesDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder typesDescription = new StringBuilder();
+            foreach (var kvp in sortedDescriptions)
+            {
+                // Форматируем строку с добавлением "м²" к значению площади
+                typesDescription.AppendLine($"{kvp.Key}: {kvp.Value:F2} м²");
+            }
+
+            Parameter param = room.LookupParameter(parameterName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(typesDescription.ToString());
+            }
+        }
+        // Ceilings
         private void UpdateRoomCeilingLayerName(Room room, List<Ceiling> ceilings, string parameterName)
         {
-            // Сортируем типы полов по имени и создаем строку для записи в параметр
-            string typesName = string.Join("\n", ceilings.Select(f => f.Name).Distinct().OrderBy(n => n));
+            // Инициализируем словарь для сопоставления марок с их составом
+            var typesDescriptions = new Dictionary<string, string>();
 
-            // Находим параметр помещения и обновляем его
+            foreach (Ceiling ceiling in ceilings)
+            {
+                // Получаем тип потолка
+                ElementType ceilingType = _doc.GetElement(ceiling.GetTypeId()) as ElementType;
+                if (ceilingType != null)
+                {
+                    Parameter markParam = ceilingType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")); // ADSK_Этаж
+                    Parameter compositionParam = ceilingType.get_Parameter(new Guid("92f979b3-1252-42e1-92aa-b4a9337e285f")); // Слои.Состав
+
+                    if (markParam != null && compositionParam != null)
+                    {
+                        string mark = markParam.AsString();
+                        string composition = compositionParam.AsString();
+
+                        if (!string.IsNullOrEmpty(mark))
+                        {
+                            typesDescriptions[mark] = composition;
+                        }
+                        else
+                        {
+                            // Отображаем TaskDialog, предупреждающий пользователя
+                            TaskDialog.Show("Неопределенная марка", "Заполните 'ADSK_марка' в потолках. Один из потолков не имеет определенной марки, что может вызвать ошибки.");
+                        }
+                    }
+                    else
+                    {
+                        // Отображаем TaskDialog, предупреждающий пользователя
+                        TaskDialog.Show("Отсутствуют параметры", "Не удалось найти параметры 'ADSK_марка' или 'DPM_X_Слои.Состав' в типе потолка.");
+                    }
+                }
+                else
+                {
+                    // Отображаем TaskDialog, предупреждающий пользователя
+                    TaskDialog.Show("Отсутствует тип потолка", "У одного из потолков отсутствует тип, что может вызвать ошибки.");
+                }
+            }
+
+            // Сортируем словарь по ключам (маркам) и формируем итоговую строку
+            var sortedDescriptions = typesDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder typesDescription = new StringBuilder();
+            foreach (var kvp in sortedDescriptions)
+            {
+                typesDescription.AppendLine($"{kvp.Key}:\n{kvp.Value}");
+            }
+
+            // Находим параметр помещения и обновляем его многострочным текстом
             Parameter param = room.LookupParameter(RoomCeilingLayerName);
             if (param != null && param.StorageType == StorageType.String)
             {
-                param.Set(typesName);
+                param.Set(typesDescription.ToString());
             }
         }
-        private void UpdateRoomWallLayerName(Room room, List<Wall> walls, string parameterName)
+        private void UpdateRoomCeilingLayerArea(Room room, List<Ceiling> ceilings, string parameterName)
         {
-            // Сортируем типы полов по имени и создаем строку для записи в параметр
-            string typesName = string.Join("\n", walls.Select(f => f.Name).Distinct().OrderBy(n => n));
+            var typesDescriptions = new Dictionary<string, double>();
 
-            // Находим параметр помещения и обновляем его
-            Parameter param = room.LookupParameter(RoomWallLayerName);
+            foreach (Ceiling ceiling in ceilings)
+            {
+                // Получаем тип потолка
+                ElementType ceilingType = _doc.GetElement(ceiling.GetTypeId()) as ElementType;
+
+                if (ceilingType != null)
+                {
+                    Parameter markParam = ceilingType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")); // ADSK_Этаж
+                    if (markParam == null || string.IsNullOrEmpty(markParam.AsString()))
+                    {
+                        // Отображаем TaskDialog, предупреждающий пользователя
+                        TaskDialog.Show("Неопределенная марка", "Заполните 'ADSK_марка' в потолках. Один из потолков не имеет определенной марки, что может вызвать ошибки.");
+                        continue; // Пропускаем этот потолок и продолжаем с остальными
+                    }
+
+                    string mark = markParam.AsString();
+                    double area = ceiling.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED).AsDouble() * 0.092903; // Преобразуем площадь в метры квадратные
+
+                    if (!typesDescriptions.ContainsKey(mark))
+                    {
+                        typesDescriptions[mark] = area;
+                    }
+                    else
+                    {
+                        typesDescriptions[mark] += area; // Суммируем площади одинаковых типов потолков
+                    }
+                }
+                else
+                {
+                    // Отображаем TaskDialog, предупреждающий пользователя
+                    TaskDialog.Show("Отсутствует тип потолка", "У одного из потолков отсутствует тип, что может вызвать ошибки.");
+                }
+            }
+
+            var sortedDescriptions = typesDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder typesDescription = new StringBuilder();
+            foreach (var kvp in sortedDescriptions)
+            {
+                // Форматируем строку с добавлением "м²" к значению площади
+                typesDescription.AppendLine($"{kvp.Key}: {kvp.Value:F2} м²");
+            }
+
+            Parameter param = room.LookupParameter(parameterName);
             if (param != null && param.StorageType == StorageType.String)
             {
-                param.Set(typesName);
+                param.Set(typesDescription.ToString());
+            }
+        }
+        private void UpdateRoomCeilingHeight(Room room, List<Ceiling> ceilings, string parameterName)
+        {
+            var heightDescriptions = new Dictionary<string, string>();
+
+            foreach (Ceiling ceiling in ceilings)
+            {
+                ElementType ceilingType = _doc.GetElement(ceiling.GetTypeId()) as ElementType;
+
+                if (ceilingType != null)
+                {
+                    Parameter markParam = ceilingType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d")); // ADSK_Этаж
+                    if (markParam == null || string.IsNullOrEmpty(markParam.AsString()))
+                    {
+                        // Отображаем TaskDialog, предупреждающий пользователя
+                        TaskDialog.Show("Неопределенная марка", "Заполните 'ADSK_марка' в потолках. Один из потолков не имеет определенной марки, что может вызвать ошибки.");
+                        continue; // Пропускаем этот потолок и продолжаем с остальными
+                    }
+
+                    string mark = markParam.AsString();
+                    Parameter heightParam = ceiling.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM);
+                    if (heightParam != null && heightParam.StorageType == StorageType.Double)
+                    {
+                        double height = heightParam.AsDouble();
+                        // Преобразуем высоту из внутреннего формата Revit (футы) в метры
+                        height = UnitUtils.ConvertFromInternalUnits(height, UnitTypeId.Meters);
+                        heightDescriptions[mark] = $"{height:F2}м";
+                    }
+                    else
+                    {
+                        // Отображаем TaskDialog, предупреждающий пользователя
+                        TaskDialog.Show("Отсутствует параметр высоты", "Не удалось найти параметр высоты для потолка.");
+                    }
+                }
+                else
+                {
+                    // Отображаем TaskDialog, предупреждающий пользователя
+                    TaskDialog.Show("Отсутствует тип потолка", "У одного из потолков отсутствует тип, что может вызвать ошибки.");
+                }
+            }
+
+            var sortedHeights = heightDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder heightsDescription = new StringBuilder();
+            foreach (var kvp in sortedHeights)
+            {
+                heightsDescription.AppendLine($"{kvp.Key}: {kvp.Value}");
+            }
+
+            Parameter param = room.LookupParameter(parameterName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(heightsDescription.ToString());
             }
         }
 
+        // Walls
+        private void UpdateRoomWallLayerName(Room room, List<Wall> finishingMainWalls, string parameterName)
+        {
+            var typesDescriptions = new Dictionary<string, string>();
 
+            foreach (Wall finishingMainWall in finishingMainWalls)
+            {
+                WallType wallType = finishingMainWall.WallType;
 
+                if (wallType != null)
+                {
+                    Parameter markParam = wallType.get_Parameter(new Guid("2204049c-d557-4dfc-8d70-13f19715e46d"));
+                    Parameter compositionParam = wallType.get_Parameter(new Guid("92f979b3-1252-42e1-92aa-b4a9337e285f"));
 
+                    if (markParam != null && compositionParam != null)
+                    {
+                        string mark = markParam.AsString();
+                        string composition = compositionParam.AsString();
 
+                        if (!string.IsNullOrEmpty(mark)) // Проверяем наличие значения марки
+                        {
+                            typesDescriptions[mark] = composition;
+                        }
+                        else
+                        {
+                            // Если марка не определена, отображаем сообщение
+                            TaskDialog.Show("Неопределенная марка", "Не все стены имеют определенную марку 'ADSK_марка'.");
+                            continue; // Пропускаем эту стену и продолжаем с остальными
+                        }
+                    }
+                    else
+                    {
+                        // Если параметры не найдены, отображаем сообщение
+                        TaskDialog.Show("Отсутствуют параметры", "Не удалось найти параметры марки или состава в типе стены.");
+                        continue; // Пропускаем эту стену и продолжаем с остальными
+                    }
+                }
+                else
+                {
+                    // Если тип стены не найден, отображаем сообщение
+                    TaskDialog.Show("Отсутствует тип стены", "У одной из стен отсутствует тип, что может вызвать ошибки.");
+                    continue; // Пропускаем эту стену и продолжаем с остальными
+                }
+            }
+
+            // Сортируем и формируем итоговую строку
+            var sortedDescriptions = typesDescriptions.OrderBy(kvp => kvp.Key);
+            StringBuilder typesDescription = new StringBuilder();
+            foreach (var kvp in sortedDescriptions)
+            {
+                typesDescription.AppendLine($"{kvp.Key}:\n{kvp.Value}");
+            }
+
+            // Обновляем параметр помещения
+            Parameter param = room.LookupParameter(parameterName);
+            if (param != null && param.StorageType == StorageType.String)
+            {
+                param.Set(typesDescription.ToString());
+            }
+            else
+            {
+                // Если параметр не найден или его тип хранения не является строкой, отображаем сообщение
+                TaskDialog.Show("Ошибка параметра", $"Не удалось обновить параметр '{parameterName}' для помещения с номером '{room.Number}'.");
+            }
+        }
+
+  
         // Rooms
         private bool IsRoomAreaNonZero(Room room)
         {
