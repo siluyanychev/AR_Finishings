@@ -3,6 +3,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Windows.Media;
@@ -75,24 +76,57 @@ namespace AR_Finishings
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                             createdWalls.Add(createdWall);
 
-                            // Join walls 
                             if (boundaryElement != null &&
-                                boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
-                                createdWall != null)
+                            boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
+                            boundaryElement.Category.Id.Value != (int)BuiltInCategory.OST_Columns)
                             {
                                 JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
                             }
+
+
                             SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue, levelRoomStringValue);
+
+                            // Колонны
+
+                            // Список для хранения стен с длиной не более 800 мм
+                            List<Wall> potentialColumnWalls = new List<Wall>();
+
+                            // Сбор потенциальных стен колонн
+                            foreach (Wall wall in createdWalls)
+                            {
+                                LocationCurve locCurve = wall.Location as LocationCurve;
+                                if (locCurve != null)
+                                {
+                                    double length = locCurve.Curve.Length;
+                                    // Конвертация длины в миллиметры для сравнения
+                                    double lengthInMM = length * 304.8;
+                                    if (lengthInMM <= 800)
+                                    {
+                                        potentialColumnWalls.Add(wall);
+                                    }
+                                }
+                            }
+
+                            // Установка параметра для каждой стены, которая потенциально является колонной
+                            foreach (Wall wall in potentialColumnWalls)
+                            {
+                                Parameter commentsParam = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                                if (commentsParam != null && commentsParam.StorageType == StorageType.String)
+                                {
+                                    commentsParam.Set("Колонна");
+                                }
+                            }
+
                         }
                     }
                 }
                 trans.Commit();
-                // Вызовите TrimExtendWalls после того как транзакция будет закрыта
-                //TrimExtendWalls(_doc, createdWalls);
+
+
             }
 
 
-
+            
         }
         private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
@@ -126,6 +160,24 @@ namespace AR_Finishings
             }
 
         }
+
+        private bool IsColumn(ElementId elementId)
+        {
+            Element element = _doc.GetElement(elementId);
+            if (element == null) return false;
+
+            // Проверяем, соответствует ли категория элемента категории колонн
+            bool isColumn = element.Category != null &&
+                (element.Category.Id.Value == (int)BuiltInCategory.OST_StructuralColumns ||
+                 element.Category.Id.Value == (int)BuiltInCategory.OST_Columns);
+
+            // Добавим вывод в консоль или лог для отладки
+            Debug.WriteLine($"ElementId: {elementId}, Category: {element.Category?.Name}, IsColumn: {isColumn}");
+
+            return isColumn;
+        }
+
+
 
     }
 }

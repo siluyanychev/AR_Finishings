@@ -57,8 +57,8 @@ namespace AR_Finishings
         }
         private void UpdateSkirtTypes()
         {
-            var wallTypes = ets.GetWallTypes(mainDocument);
-            selectSkirtsComboBox.ItemsSource = wallTypes;
+            var skirtTypes = ets.GetWallTypes(mainDocument);
+            selectSkirtsComboBox.ItemsSource = skirtTypes;
             selectSkirtsComboBox.DisplayMemberPath = "Name";
         }
         private void CheckBox_ValsForElements_Checked(object sender, RoutedEventArgs e)
@@ -104,6 +104,7 @@ namespace AR_Finishings
             FloorType selectedFloorType = selectFloorsComboBox.SelectedItem as FloorType;
             CeilingType selectedCeilingType = selectCeilingsComboBox.SelectedItem as CeilingType;
             WallType selectedWallType = selectWallsComboBox.SelectedItem as WallType;
+            WallType selectedSkirtType = selectSkirtsComboBox.SelectedItem as WallType;
 
 
             if (_isParametersCheckboxChecked)
@@ -136,11 +137,11 @@ namespace AR_Finishings
             Room firstSelectedRoom = mainDocument.GetElement(_selectedRoomIds.First()) as Room;
             ElementId levelId = firstSelectedRoom.LevelId;
 
-            if (selectedWallType != null)
+            if (selectedSkirtType != null)
             {
                 // The wall generator needs to accept the ceiling height parameter.
                 RoomBoundarySkirtGenerator skirtGenerator = new RoomBoundarySkirtGenerator(mainDocument, SkirtsHeight);
-                skirtGenerator.CreateWalls(_selectedRoomIds, selectedWallType);
+                skirtGenerator.CreateWalls(_selectedRoomIds, selectedSkirtType);
                 skirtGenerator.CutSkirtsAtDoors(_selectedRoomIds);
             }
         }
