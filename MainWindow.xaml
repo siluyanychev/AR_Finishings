@@ -1,7 +1,7 @@
 ﻿<Window x:Class="AR_Finishings.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AR Finishings" Height="365" Width="420">
+        Title="AR Finishings" Height="395" Width="420" >
     <Grid Margin="0,0,0,-6">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="134*"/>
@@ -16,7 +16,7 @@
 
         <StackPanel Grid.Row="0" Margin="10,10,10,19" Grid.ColumnSpan="3">
             <CheckBox x:Name="getParametersCheckbox" Content="Get Parameters" Checked="CheckBox_GetParameters" Unchecked="CheckBox_GetParameters" />
-            <Separator Height="10" />
+            <Separator Height="15" />
 
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center" HorizontalAlignment="Stretch">
                 <Label Content="Select Floors" Width="90" VerticalContentAlignment="Bottom" HorizontalAlignment="Left"  />
@@ -31,28 +31,31 @@
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <Label Content="Select Walls" Width="90" />
+                <Label Content="Select Walls" Width="90" ToolTip="Only Walls with finishing prefixes"/>
                 <ComboBox x:Name="selectWallsComboBox" Width="160" Height="25" />
-                <Label Content="  Offset " Width="60"  />
+                <Label Content="  Offset " Width="60"  ToolTip="Offset upset from ceiling"/>
                 <TextBox x:Name="wallsOffsetTextBox" Text="{Binding WallsOffset}" Width="70" ToolTip="H Offset to Ceilings (mm)" HorizontalAlignment="Right" />
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                 <Label Content="Select Skirts" Width="90" />
                 <ComboBox x:Name="selectSkirtsComboBox" Width="160" Height="25" />
-                <Label Content="  Offset" Width="60"  />
+                <Label Content="  Height" Width="60"  />
                 <TextBox x:Name="skirtsHeightTextBox" Text="{Binding SkirtsHeight}" Width="70" ToolTip="H Skirts (mm)" HorizontalAlignment="Right" />
             </StackPanel>
-            <Button Content="Generate" Click="RunButton_Click" Margin="0,20,0,0" Height="40" />
+            <Button Content="Generate geometry elements" Click="RunButton_Click" TextBlock.Foreground="White" FontWeight="DemiBold" Margin="0,20,0,0" Height="40" Background="OrangeRed" 
+                    ToolTip="Only for generate geometry inside rooms">
+
+            </Button>
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="20,0,0,0" Grid.ColumnSpan="3" Width="400" >
-            <CheckBox Content="Set Values for Geom" Checked="CheckBox_ValsForElements" Width="135" />
-            <CheckBox Content="Set Values for Rooms" Checked="CheckBox_ValsForRooms" Width="135" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="13,285,0,3" Grid.ColumnSpan="2" Width="390" Grid.RowSpan="3" >
+            <CheckBox Content="Set Values for Geometry" Checked="CheckBox_ValsForElements" Width="200" />
+            <CheckBox Content="Set Values for Rooms" Checked="CheckBox_ValsForRooms" Width="140" />
 
         </StackPanel>
-        <Separator Grid.ColumnSpan="5" Margin="10,270
-                   ,10,10" />
-        <Button x:Name="UpdateButton" Content="Update" Click="UpdateButton_Click" Margin="10,20,10,-20" Height="40" Grid.ColumnSpan="3" Grid.Row="2" />
+        <Separator Grid.ColumnSpan="3" Margin="10,267,10,13" />
+        <Button x:Name="UpdateButton" Content="Update values for elements" TextBlock.Foreground="White" FontWeight="DemiBold" Click="UpdateButton_Click" Margin="10,20,10,-20" Height="40" Grid.ColumnSpan="3" Grid.Row="2" Background="OrangeRed"
+                ToolTip="Only for update values for elements"/>
     </Grid>
 </Window>

@@ -88,9 +88,10 @@ namespace AR_Finishings
                             {
                                 JoinGeometryUtils.JoinGeometry(_doc, createdWall, boundaryElement);
                             }
+                            UnjoinWallsAndColumns(_doc, createdWalls);
 
 
-                            
+
                         }
                     }  
                 }
@@ -118,6 +119,28 @@ namespace AR_Finishings
                 trans.Commit();
             }
 
+        }
+        public void UnjoinWallsAndColumns(Document doc, IEnumerable<Wall> walls)
+        {
+            // Сбор всех колонн в документе
+            FilteredElementCollector collector = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_Columns)
+                .WhereElementIsNotElementType();
+
+            // Перебор всех колонн
+            foreach (Element column in collector)
+            {
+                // Перебор всех стен
+                foreach (Wall wall in walls)
+                {
+                    // Проверка, были ли элементы объединены
+                    if (JoinGeometryUtils.AreElementsJoined(doc, wall, column))
+                    {
+                        // Если да, то разъединить их
+                        JoinGeometryUtils.UnjoinGeometry(doc, wall, column);
+                    }
+                }
+            }
         }
 
         private List<Wall> IdentifyColumnWalls(List<Wall> createdWalls, IEnumerable<ElementId> selectedRoomIds)
