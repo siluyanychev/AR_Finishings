@@ -15,11 +15,13 @@ namespace AR_Finishings
     {
         private Document _doc;
         private double _wallHeight;
+        private List<Wall> createdWalls;
 
         public RoomBoundaryWallGenerator(Document doc, double wallHeight)
         {
             _doc = doc;
             _wallHeight = wallHeight;
+            createdWalls = new List<Wall>();
         }
         public void CreateWalls(IEnumerable<ElementId> selectedRoomIds, WallType selectedWallType)
         {
@@ -27,12 +29,12 @@ namespace AR_Finishings
             using (Transaction trans = new Transaction(_doc, "Generate Walls"))
 
             {
-                List<Wall> createdWalls = new List<Wall>();
 
                 trans.Start();
                 foreach (ElementId roomId in selectedRoomIds)
                 {
                     Room room = _doc.GetElement(roomId) as Room;
+                    if (room == null) continue;
                     string roomNameValue = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString();
                     string roomNumberValue = room.get_Parameter(BuiltInParameter.ROOM_NUMBER).AsString();
                     string levelRoomStringValue = room.get_Parameter(BuiltInParameter.LEVEL_NAME).AsString().Split('_')[1];
@@ -45,6 +47,7 @@ namespace AR_Finishings
                         foreach (var segment in boundary)
                         {
                             Element boundaryElement = _doc.GetElement(segment.ElementId);
+                            if (boundaryElement == null) continue;
 
                             // Проверяем, является ли элемент стеной с CurtainGrid или имя типа начинается с "АР_О"
                             Wall boundaryWall = boundaryElement as Wall;
@@ -76,6 +79,9 @@ namespace AR_Finishings
                             message.AppendLine($"Room ID: {roomId.Value}, Wall ID: {createdWall.Id.Value}");
                             createdWalls.Add(createdWall);
 
+                            
+                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue, levelRoomStringValue);
+
                             if (boundaryElement != null &&
                             boundaryElement.Category.Id.Value == (int)BuiltInCategory.OST_Walls &&
                             boundaryElement.Category.Id.Value != (int)BuiltInCategory.OST_Columns)
@@ -84,49 +90,104 @@ namespace AR_Finishings
                             }
 
 
-                            SetupWallParameters(createdWall, roomLowerOffset, roomNameValue, roomNumberValue, levelRoomStringValue);
+                            
+                        }
+                    }  
+                }
+                trans.Commit();
+            }
 
-                            // Колонны
+            using (Transaction trans = new Transaction(_doc, "Set Column Comments"))
+            {
+                trans.Start();
 
-                            // Список для хранения стен с длиной не более 800 мм
-                            List<Wall> potentialColumnWalls = new List<Wall>();
-
-                            // Сбор потенциальных стен колонн
-                            foreach (Wall wall in createdWalls)
-                            {
-                                LocationCurve locCurve = wall.Location as LocationCurve;
-                                if (locCurve != null)
-                                {
-                                    double length = locCurve.Curve.Length;
-                                    // Конвертация длины в миллиметры для сравнения
-                                    double lengthInMM = length * 304.8;
-                                    if (lengthInMM <= 800)
-                                    {
-                                        potentialColumnWalls.Add(wall);
-                                    }
-                                }
-                            }
-
-                            // Установка параметра для каждой стены, которая потенциально является колонной
-                            foreach (Wall wall in potentialColumnWalls)
-                            {
-                                Parameter commentsParam = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
-                                if (commentsParam != null && commentsParam.StorageType == StorageType.String)
-                                {
-                                    commentsParam.Set("Колонна");
-                                }
-                            }
-
+                // Columns
+                List<Wall> columnWalls = IdentifyColumnWalls(createdWalls, selectedRoomIds);
+                foreach (Wall wall in columnWalls)
+                {
+                    if (wall != null)
+                    {
+                        Parameter commentsParam = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+                        if (commentsParam != null && commentsParam.StorageType == StorageType.String)
+                        {
+                            commentsParam.Set("Колонна");
                         }
                     }
                 }
+
                 trans.Commit();
-
-
             }
 
+        }
 
-            
+        private List<Wall> IdentifyColumnWalls(List<Wall> createdWalls, IEnumerable<ElementId> selectedRoomIds)
+        {
+            List<Wall> columnWalls = new List<Wall>();
+
+            // Assuming _doc is already initialized and is not null.
+            FilteredElementCollector columnCollector = new FilteredElementCollector(_doc)
+                .OfCategory(BuiltInCategory.OST_Columns)
+                .WhereElementIsNotElementType();
+
+            // Ensure columns list is not null before proceeding
+            List<Element> columns = columnCollector?.ToList() ?? new List<Element>();
+
+            foreach (Wall wall in createdWalls)
+            {
+                // Check for null before accessing the Location property
+                if (wall != null && wall.Location is LocationCurve locCurve)
+                {
+                    double lengthInMM = locCurve.Curve.Length * 304.8;
+                    if (lengthInMM <= 800)
+                    {
+                        // Ensure that the DoesWallIntersectWithAnyColumn method is handling nulls properly
+                        if (DoesWallIntersectWithAnyColumn(wall, columns))
+                        {
+                            columnWalls.Add(wall);
+                        }
+                    }
+                }
+            }
+            return columnWalls;
+        }
+        private bool DoesWallIntersectWithAnyColumn(Wall wall, List<Element> columns)
+        {
+            // Check for null before accessing the BoundingBox property
+            BoundingBoxXYZ wallBB = wall?.get_BoundingBox(null);
+            if (wallBB == null) return false;
+
+            foreach (Element column in columns)
+            {
+                // Check for null before accessing the BoundingBox property
+                BoundingBoxXYZ columnBB = column?.get_BoundingBox(null);
+                if (columnBB != null && Intersect(wallBB, columnBB))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        private bool Intersect(BoundingBoxXYZ box1, BoundingBoxXYZ box2, double bufferMM = 20.0)
+        {
+            double buffer = bufferMM / 304.8; // Конвертируем мм в футы для Revit
+
+            // Создаем новые BoundingBox с учетом зазора
+            BoundingBoxXYZ expandedBox1 = new BoundingBoxXYZ()
+            {
+                Min = new XYZ(box1.Min.X - buffer, box1.Min.Y - buffer, box1.Min.Z - buffer),
+                Max = new XYZ(box1.Max.X + buffer, box1.Max.Y + buffer, box1.Max.Z + buffer)
+            };
+
+            BoundingBoxXYZ expandedBox2 = new BoundingBoxXYZ()
+            {
+                Min = new XYZ(box2.Min.X - buffer, box2.Min.Y - buffer, box2.Min.Z - buffer),
+                Max = new XYZ(box2.Max.X + buffer, box2.Max.Y + buffer, box2.Max.Z + buffer)
+            };
+
+            return expandedBox1.Min.X <= expandedBox2.Max.X && expandedBox1.Max.X >= expandedBox2.Min.X &&
+                   expandedBox1.Min.Y <= expandedBox2.Max.Y && expandedBox1.Max.Y >= expandedBox2.Min.Y &&
+                   expandedBox1.Min.Z <= expandedBox2.Max.Z && expandedBox1.Max.Z >= expandedBox2.Min.Z;
         }
         private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
@@ -158,26 +219,6 @@ namespace AR_Finishings
             {
                 wallLevelParam.Set(levelRoomStringValue); // Установка значения параметра
             }
-
         }
-
-        private bool IsColumn(ElementId elementId)
-        {
-            Element element = _doc.GetElement(elementId);
-            if (element == null) return false;
-
-            // Проверяем, соответствует ли категория элемента категории колонн
-            bool isColumn = element.Category != null &&
-                (element.Category.Id.Value == (int)BuiltInCategory.OST_StructuralColumns ||
-                 element.Category.Id.Value == (int)BuiltInCategory.OST_Columns);
-
-            // Добавим вывод в консоль или лог для отладки
-            Debug.WriteLine($"ElementId: {elementId}, Category: {element.Category?.Name}, IsColumn: {isColumn}");
-
-            return isColumn;
-        }
-
-
-
     }
 }
