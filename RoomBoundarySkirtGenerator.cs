@@ -154,6 +154,8 @@ namespace AR_Finishings
                         XYZ doorPosition = doorLocation.Point;
                         XYZ doorDirection = door.HandOrientation; // Используем HandOrientation как направление двери
                         double doorWidth = (door.get_BoundingBox(null).Max.X - door.get_BoundingBox(null).Min.X) * _doc.ActiveView.Scale;
+                        // TODO
+                        List<ElementId> wallsToBeDeleted = new List<ElementId>();
 
                         foreach (Wall roomWall in createdWalls)
                         {

@@ -20,6 +20,10 @@ namespace AR_Finishings
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
+            if (!DataVerifier.VerifyData(commandData))
+            {
+                return Result.Cancelled;
+            }
             try
             {
                 UIDocument uidoc = commandData.Application.ActiveUIDocument;

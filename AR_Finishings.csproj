@@ -54,6 +54,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DataVerifier.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="PatchChecker.cs" />
     <Compile Include="Preparations.cs" />
