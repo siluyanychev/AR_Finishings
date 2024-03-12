@@ -76,6 +76,7 @@
     <Compile Include="ValuesForFloors.cs" />
     <Compile Include="ValuesForRooms.cs" />
     <Compile Include="ValuesForWalls.cs" />
+    <Compile Include="XYZComparer.cs" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="MainWindow.xaml">

@@ -10,25 +10,28 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Xaml;
 
+
 namespace AR_Finishings
 {
     public class RoomBoundarySkirtGenerator
     {
         private Document _doc;
-       //Shared Parameters
-
         private double _skirtHeight;
-        private List<Wall> createdWalls = new List<Wall>();
+        private List<Wall> createdWalls;
+        private Dictionary<ElementId, List<ElementId>> wallDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
+
 
         public RoomBoundarySkirtGenerator(Document doc, double skirtHeight)
         {
             _doc = doc;
             _skirtHeight = skirtHeight;
+            createdWalls = new List<Wall>();
+            wallDoorIntersections = new Dictionary<ElementId, List<ElementId>>(); // Инициализация словаря
+
         }
         public void CreateWalls(IEnumerable<ElementId> selectedRoomIds, WallType selectedWallType)
         {
             StringBuilder message = new StringBuilder("Generated Skirts for Room IDs:\n");
-            List<Wall> createdWalls = new List<Wall>(); // Список для хранения созданных стен
 
             using (Transaction trans = new Transaction(_doc, "Generate Skirt"))
             {
@@ -58,7 +61,7 @@ namespace AR_Finishings
 
                             Curve curve = segment.GetCurve();
                             Curve outerCurve = curve.CreateOffset(selectedWallType.Width / -2.0, XYZ.BasisZ);
-                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, _skirtHeight / 304.8 , 0, false, false);
+                            Wall createdWall = Wall.Create(_doc, outerCurve, selectedWallType.Id, level.Id, _skirtHeight / 304.8, 0, false, false);
                             createdWalls.Add(createdWall); // Добавляем стену в список
                             // Join walls 
                             if (boundaryWall != null &&
@@ -78,6 +81,153 @@ namespace AR_Finishings
             }
 
         }
+        public void CheckWallsAndDoorsIntersection()
+        {
+            using (Transaction trans = new Transaction(_doc, "Check Walls and Doors Intersection"))
+            {
+                trans.Start();
+                wallDoorIntersections = new Dictionary<ElementId, List<ElementId>>(); // Инициализация здесь
+                foreach (Wall wall in createdWalls)
+                {
+                    // Получаем BoundingBox стены
+                    BoundingBoxXYZ wallBox = wall.get_BoundingBox(null);
+                    // Проверяем, что BoundingBox существует и он не пустой
+                    if (wallBox == null || wallBox.Min.IsAlmostEqualTo(wallBox.Max))
+                    {
+                        // Пропускаем стену, если BoundingBox пустой
+                        continue;
+                    }
+
+                    Outline wallOutline = new Outline(wallBox.Min - new XYZ(500 / 304.8, 500 / 304.8, 0),
+                                                      wallBox.Max + new XYZ(500 / 304.8, 500 / 304.8, 0));
+                    BoundingBoxIntersectsFilter filter = new BoundingBoxIntersectsFilter(wallOutline);
+                    FilteredElementCollector collector = new FilteredElementCollector(_doc).OfCategory(BuiltInCategory.OST_Doors).WherePasses(filter);
+
+                    List<ElementId> intersectingDoors = new List<ElementId>();
+                    foreach (Element door in collector)
+                    {
+                        intersectingDoors.Add(door.Id);
+                    }
+
+                    // If there are intersecting doors, add them to the dictionary
+                    if (intersectingDoors.Count > 0)
+                    {
+                        wallDoorIntersections.Add(wall.Id, intersectingDoors);
+                    }
+                }
+
+                // Display the intersections
+                StringBuilder sb = new StringBuilder();
+                foreach (var kvp in wallDoorIntersections)
+                {
+                    foreach (var doorId in kvp.Value)
+                    {
+                        sb.AppendLine($"Wall ID: {kvp.Key.Value} : Door ID: {doorId.Value}");
+                    }
+                }
+
+                if (sb.Length > 0)
+                {
+                    TaskDialog.Show("Intersections", sb.ToString());
+                }
+                else
+                {
+                    TaskDialog.Show("Intersections", "No intersections found.");
+                }
+
+                trans.Commit();
+            }
+        }
+
+        public void DivideWallsAtDoors()
+        {
+            using (Transaction trans = new Transaction(_doc, "Divide Walls At Doors"))
+            {
+                if (trans.Start() == TransactionStatus.Started)
+                {
+                    foreach (var kvp in wallDoorIntersections)
+                    {
+                        Wall wall = _doc.GetElement(kvp.Key) as Wall;
+                        if (wall == null) continue;
+
+                        LocationCurve wallLocCurve = wall.Location as LocationCurve;
+                        if (wallLocCurve == null) continue;
+
+                        Curve wallCurve = wallLocCurve.Curve;
+                        if (wallCurve == null) continue;
+
+                        foreach (ElementId doorId in kvp.Value)
+                        {
+                            FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
+                            if (door != null)
+                            {
+                                LocationPoint doorLocation = door.Location as LocationPoint;
+                                XYZ doorPosition = doorLocation.Point;
+                                double doorWidth = door.Symbol.get_Parameter(BuiltInParameter.DOOR_WIDTH).AsDouble();
+
+                                // Находим направление стены и двери
+                                XYZ wallDirection = wallCurve.GetEndPoint(1) - wallCurve.GetEndPoint(0);
+                                XYZ doorDirection = door.HandOrientation;
+
+                                // Находим вектор, параллельный направлению стены и указывающий в сторону от границы помещения
+                                XYZ offsetVector = new XYZ(-wallDirection.Y, wallDirection.X, 0);
+
+                                // Нормализуем вектор, чтобы он имел длину 1
+                                offsetVector = offsetVector.Normalize();
+
+                                // Находим точки на стенах, параллельные направлению стены
+                                XYZ doorLeftPoint = doorPosition - doorDirection * doorWidth / 2.0 - offsetVector;
+                                XYZ doorRightPoint = doorPosition + doorDirection * doorWidth / 2.0 + offsetVector;
+
+                                // Найдем ближайшие точки на линии стены
+                                double paramLeft = wallCurve.Project(doorLeftPoint).Parameter;
+                                double paramRight = wallCurve.Project(doorRightPoint).Parameter;
+                                XYZ pointLeft = wallCurve.Evaluate(paramLeft, false);
+                                XYZ pointRight = wallCurve.Evaluate(paramRight, false);
+
+                                // Создаем две стены с обеих сторон двери
+                                if (pointLeft.DistanceTo(pointRight) > _doc.Application.ShortCurveTolerance)
+                                {
+                                    // Создаем стену слева от двери
+                                    Curve leftSegmentCurve = Line.CreateBound(wallCurve.GetEndPoint(0), pointLeft);
+                                    Wall leftWall = Wall.Create(_doc, leftSegmentCurve, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+
+                                    // Создаем стену справа от двери
+                                    Curve rightSegmentCurve = Line.CreateBound(pointRight, wallCurve.GetEndPoint(1));
+                                    Wall rightWall = Wall.Create(_doc, rightSegmentCurve, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+                                }
+                            }
+                        }
+
+                        // Удаляем исходную стену
+                        _doc.Delete(wall.Id);
+                    }
+
+                    if (trans.Commit() != TransactionStatus.Committed)
+                    {
+                        TaskDialog.Show("Ошибка", "Не удалось выполнить транзакцию.");
+                    }
+                }
+                else
+                {
+                    TaskDialog.Show("Ошибка", "Не удалось начать транзакцию.");
+                }
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
@@ -93,6 +243,11 @@ namespace AR_Finishings
             if (wallBoundaries != null && wallBoundaries.StorageType == StorageType.Integer)
             {
                 wallBoundaries.Set(0); // Отмена границы помещения
+            }
+            Parameter skirtIdentifier = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+            if (skirtIdentifier != null && skirtIdentifier.StorageType == StorageType.String)
+            {
+                skirtIdentifier.Set("Плинтус"); // Идентификатор плинтуса
             }
 
             // Пример установки значения общего параметра (предполагая, что параметр уже добавлен в проект)
@@ -117,147 +272,6 @@ namespace AR_Finishings
                 wallLevelParam.Set(levelRoomStringValue); // Установка значения параметра
             }
 
-        }
-
-        public void CutSkirtsAtDoors(IEnumerable<ElementId> roomIds)
-        {
-            using (Transaction trans = new Transaction(_doc, "Cut Skirts at Doors"))
-            {
-                trans.Start();
-
-                // Получаем последнюю фазу проекта
-                Phase phase = _doc.Phases.Cast<Phase>().FirstOrDefault(p => p.Name == "Новая конструкция");
-
-                if (phase == null)
-                {
-                    TaskDialog.Show("Error", "Фаза не найдена!");
-                    trans.RollBack();
-                    return;
-                }
-
-                foreach (ElementId roomId in roomIds)
-                {
-                    Room room = _doc.GetElement(roomId) as Room;
-
-                    // Создаем коллектор для поиска всех дверей в комнате в контексте последней фазы
-                    var doorsInRoom = new FilteredElementCollector(_doc)
-                        .OfCategory(BuiltInCategory.OST_Doors)
-                        .WhereElementIsNotElementType()
-                        .Cast<FamilyInstance>()
-                        .Where(door => door.get_FromRoom(phase)?.Id == roomId || door.get_ToRoom(phase)?.Id == roomId).ToList();
-
-                    foreach (FamilyInstance door in doorsInRoom)
-                    {
-                        LocationPoint doorLocation = door.Location as LocationPoint;
-                        if (doorLocation == null) continue;
-
-                        XYZ doorPosition = doorLocation.Point;
-                        XYZ doorDirection = door.HandOrientation; // Используем HandOrientation как направление двери
-                        double doorWidth = (door.get_BoundingBox(null).Max.X - door.get_BoundingBox(null).Min.X) * _doc.ActiveView.Scale;
-                        // TODO
-                        List<ElementId> wallsToBeDeleted = new List<ElementId>();
-
-                        foreach (Wall roomWall in createdWalls)
-                        {
-                            LocationCurve wallLocationCurve = roomWall.Location as LocationCurve;
-                            if (wallLocationCurve == null) continue;
-
-                            Curve wallCurve = wallLocationCurve.Curve;
-                            Line extendedLine1 = ExtendLine(wallCurve, 200 / 304.8); // 200 мм в футах
-                            Line extendedLine2 = ExtendLine(wallCurve.CreateReversed(), 200 / 304.8);
-
-                            // Проверяем пересечение расширенной линии с кривой стены
-                            IntersectionResultArray results;
-                            if (wallCurve.Intersect(extendedLine1, out results) == SetComparisonResult.Overlap)
-                            {
-                                ProcessIntersection(results, roomWall, doorPosition, doorDirection, doorWidth);
-                            }
-                            if (wallCurve.Intersect(extendedLine2, out results) == SetComparisonResult.Overlap)
-                            {
-                                ProcessIntersection(results, roomWall, doorPosition, doorDirection, doorWidth);
-                            }
-                        }
-                    }
-                }
-
-                trans.Commit();
-            }
-        }
-
-        private Line ExtendLine(Curve curve, double length)
-        {
-            XYZ start = curve.GetEndPoint(0);
-            XYZ end = curve.GetEndPoint(1);
-
-            XYZ direction = (end - start).Normalize();
-            XYZ extendedStart = start - direction * length;
-            XYZ extendedEnd = end + direction * length;
-
-            return Line.CreateBound(extendedStart, extendedEnd);
-        }
-
-        private void ProcessIntersection(IntersectionResultArray results, Wall roomWall, XYZ doorPosition, XYZ doorDirection, double doorWidth)
-        {
-            // Check if we have intersection points
-            if (results == null || results.Size == 0)
-                return;
-
-            // This boolean tracks if we created new walls to decide on deleting the original wall
-            bool createdNewWall = false;
-
-            // Assume the first intersection point is the start of the door and the second is the end
-            XYZ intersectionStart = results.get_Item(0).XYZPoint;
-            XYZ intersectionEnd = results.Size > 1 ? results.get_Item(1).XYZPoint : null;
-
-            // Check if the first intersection point is actually within the door's width
-            if (intersectionStart.DistanceTo(doorPosition) <= doorWidth / 2.0)
-            {
-                // If the first intersection is within the door, then this is not an intersection we cut at
-                intersectionStart = null;
-            }
-
-            // Check if the second intersection point is actually within the door's width
-            if (intersectionEnd != null && intersectionEnd.DistanceTo(doorPosition) <= doorWidth / 2.0)
-            {
-                // If the second intersection is within the door, then this is not an intersection we cut at
-                intersectionEnd = null;
-            }
-
-            // If we have valid intersection points, create new walls
-            if (intersectionStart != null || intersectionEnd != null)
-            {
-                // Retrieve the original wall's start and end points
-                Curve wallCurve = (roomWall.Location as LocationCurve).Curve;
-                XYZ wallStart = wallCurve.GetEndPoint(0);
-                XYZ wallEnd = wallCurve.GetEndPoint(1);
-
-                // Create the new wall segments
-                if (intersectionStart != null)
-                {
-                    Curve newWallCurve = Line.CreateBound(wallStart, intersectionStart);
-                    if (newWallCurve.Length > 0.1) // Ensure the new wall has a minimum length
-                    {
-                        Wall.Create(_doc, newWallCurve, roomWall.WallType.Id, roomWall.LevelId, roomWall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
-                        createdNewWall = true;
-                    }
-                }
-
-                if (intersectionEnd != null)
-                {
-                    Curve newWallCurve = Line.CreateBound(intersectionEnd, wallEnd);
-                    if (newWallCurve.Length > 0.1) // Ensure the new wall has a minimum length
-                    {
-                        Wall.Create(_doc, newWallCurve, roomWall.WallType.Id, roomWall.LevelId, roomWall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
-                        createdNewWall = true;
-                    }
-                }
-
-                // If new walls were created, delete the original wall
-                if (createdNewWall)
-                {
-                    _doc.Delete(roomWall.Id);
-                }
-            }
         }
     }
 }

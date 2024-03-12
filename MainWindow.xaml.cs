@@ -142,7 +142,8 @@ namespace AR_Finishings
                 // The wall generator needs to accept the ceiling height parameter.
                 RoomBoundarySkirtGenerator skirtGenerator = new RoomBoundarySkirtGenerator(mainDocument, SkirtsHeight);
                 skirtGenerator.CreateWalls(_selectedRoomIds, selectedSkirtType);
-                skirtGenerator.CutSkirtsAtDoors(_selectedRoomIds);
+                skirtGenerator.CheckWallsAndDoorsIntersection(); // Сначала проверяем пересечения
+                skirtGenerator.DivideWallsAtDoors(); // Затем разделяем стены;
             }
         }
         // Update
