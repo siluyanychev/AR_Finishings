@@ -10,6 +10,7 @@ using System.Resources;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Runtime.CompilerServices;
 
 namespace AR_Finishings
 {
@@ -180,6 +181,7 @@ namespace AR_Finishings
                 // Сброс флага, если нужно выполнить действие только один раз
                 _isValsForRoomsChecked = false;
             }
+            this.Close();
         }
 
     }

@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Xaml;
+using static Autodesk.Revit.DB.SpecTypeId;
 
 
 namespace AR_Finishings
@@ -117,28 +118,27 @@ namespace AR_Finishings
                 }
 
                 // Display the intersections
-                StringBuilder sb = new StringBuilder();
-                foreach (var kvp in wallDoorIntersections)
-                {
-                    foreach (var doorId in kvp.Value)
-                    {
-                        sb.AppendLine($"Wall ID: {kvp.Key.Value} : Door ID: {doorId.Value}");
-                    }
-                }
+                //StringBuilder sb = new StringBuilder();
+                //foreach (var kvp in wallDoorIntersections)
+                //{
+                //    foreach (var doorId in kvp.Value)
+                //    {
+                //        sb.AppendLine($"Wall ID: {kvp.Key.Value} : Door ID: {doorId.Value}");
+                //    }
+                //}
 
-                if (sb.Length > 0)
-                {
-                    TaskDialog.Show("Intersections", sb.ToString());
-                }
-                else
-                {
-                    TaskDialog.Show("Intersections", "No intersections found.");
-                }
+                //if (sb.Length > 0)
+                //{
+                //    TaskDialog.Show("Intersections", sb.ToString());
+                //}
+                //else
+                //{
+                //    TaskDialog.Show("Intersections", "No intersections found.");
+                //}
 
                 trans.Commit();
             }
         }
-
         public void DivideWallsAtDoors()
         {
             using (Transaction trans = new Transaction(_doc, "Divide Walls At Doors"))
@@ -156,57 +156,82 @@ namespace AR_Finishings
                         Curve wallCurve = wallLocCurve.Curve;
                         if (wallCurve == null) continue;
 
-                        foreach (ElementId doorId in kvp.Value)
+                        // Сортируем двери по параметру на кривой, чтобы разрезать стену в правильном порядке
+                        List<ElementId> sortedDoors = kvp.Value.OrderBy(
+                            doorId =>
+                            {
+                                FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
+                                LocationPoint doorLocation = door.Location as LocationPoint;
+                                return wallCurve.Project(doorLocation.Point).Parameter;
+                            }
+                        ).ToList();
+
+                        double lastEndParameter = 0;
+
+                        foreach (ElementId doorId in sortedDoors)
                         {
                             FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
-                            if (door != null)
+                            if (door == null) continue;
+
+                            LocationPoint doorLocation = door.Location as LocationPoint;
+                            XYZ doorPosition = doorLocation.Point;
+                            double doorWidth = door.Symbol.get_Parameter(BuiltInParameter.DOOR_WIDTH).AsDouble();
+
+                            // Находим точки разреза
+                            XYZ point1 = doorPosition - door.HandOrientation * (doorWidth / 2.0);
+                            XYZ point2 = doorPosition + door.HandOrientation * (doorWidth / 2.0);
+
+                            // Получаем параметры на кривой для точек разреза
+                            IntersectionResult result1 = wallCurve.Project(point1);
+                            IntersectionResult result2 = wallCurve.Project(point2);
+
+                            // Проверяем, нужно ли менять порядок точек разреза
+                            if (result1.Parameter > lastEndParameter && result2.Parameter < result1.Parameter)
                             {
-                                LocationPoint doorLocation = door.Location as LocationPoint;
-                                XYZ doorPosition = doorLocation.Point;
-                                double doorWidth = door.Symbol.get_Parameter(BuiltInParameter.DOOR_WIDTH).AsDouble();
-
-                                // Находим направление стены и двери
-                                XYZ wallDirection = wallCurve.GetEndPoint(1) - wallCurve.GetEndPoint(0);
-                                XYZ doorDirection = door.HandOrientation;
-
-                                // Находим вектор, параллельный направлению стены и указывающий в сторону от границы помещения
-                                XYZ offsetVector = new XYZ(-wallDirection.Y, wallDirection.X, 0);
-
-                                // Нормализуем вектор, чтобы он имел длину 1
-                                offsetVector = offsetVector.Normalize();
-
-                                // Находим точки на стенах, параллельные направлению стены
-                                XYZ doorLeftPoint = doorPosition - doorDirection * doorWidth / 2.0 - offsetVector;
-                                XYZ doorRightPoint = doorPosition + doorDirection * doorWidth / 2.0 + offsetVector;
-
-                                // Найдем ближайшие точки на линии стены
-                                double paramLeft = wallCurve.Project(doorLeftPoint).Parameter;
-                                double paramRight = wallCurve.Project(doorRightPoint).Parameter;
-                                XYZ pointLeft = wallCurve.Evaluate(paramLeft, false);
-                                XYZ pointRight = wallCurve.Evaluate(paramRight, false);
-
-                                // Создаем две стены с обеих сторон двери
-                                if (pointLeft.DistanceTo(pointRight) > _doc.Application.ShortCurveTolerance)
-                                {
-                                    // Создаем стену слева от двери
-                                    Curve leftSegmentCurve = Line.CreateBound(wallCurve.GetEndPoint(0), pointLeft);
-                                    Wall leftWall = Wall.Create(_doc, leftSegmentCurve, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
-
-                                    // Создаем стену справа от двери
-                                    Curve rightSegmentCurve = Line.CreateBound(pointRight, wallCurve.GetEndPoint(1));
-                                    Wall rightWall = Wall.Create(_doc, rightSegmentCurve, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
-                                }
+                                // Если параметр начала первой точки больше предыдущего конца и параметр второй точки меньше параметра первой точки,
+                                // значит, произошел разворот двери. Меняем точки местами.
+                                var temp = result1;
+                                result1 = result2;
+                                result2 = temp;
                             }
+
+                            // Создаем сегменты только справа и слева от двери
+                            if (result1.Parameter > lastEndParameter)
+                            {
+                                Curve leftSegment = wallCurve.Clone();
+                                leftSegment.MakeBound(lastEndParameter, result1.Parameter);
+                                Wall newLeftWall = Wall.Create(_doc, leftSegment, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+                                SetupWallParameters(newLeftWall,
+                                wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).AsDouble(),
+                                wall.get_Parameter(new Guid("4a5cec5d-f883-42c3-a05c-89ec822d637b")).AsString(),
+                                wall.get_Parameter(new Guid("317bbea6-a1a8-4923-a722-635c998c184d")).AsString(),
+                                wall.get_Parameter(new Guid("9eabf56c-a6cd-4b5c-a9d0-e9223e19ea3f")).AsString());
+
+                            }
+
+                            lastEndParameter = result2.Parameter;
+                        }
+
+                        // Создаем последний сегмент после последней двери
+                        if (lastEndParameter < wallCurve.GetEndParameter(1))
+                        {
+                            Curve rightSegment = wallCurve.Clone();
+                            rightSegment.MakeBound(lastEndParameter, wallCurve.GetEndParameter(1));
+                            Wall newRightwall = Wall.Create(_doc, rightSegment, wall.WallType.Id, wall.LevelId, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble(), 0, false, false);
+                            SetupWallParameters(newRightwall,
+                                wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET).AsDouble(),
+                                wall.get_Parameter(new Guid("4a5cec5d-f883-42c3-a05c-89ec822d637b")).AsString(),
+                                wall.get_Parameter(new Guid("317bbea6-a1a8-4923-a722-635c998c184d")).AsString(),
+                                wall.get_Parameter(new Guid("9eabf56c-a6cd-4b5c-a9d0-e9223e19ea3f")).AsString());
+
                         }
 
                         // Удаляем исходную стену
                         _doc.Delete(wall.Id);
                     }
 
-                    if (trans.Commit() != TransactionStatus.Committed)
-                    {
-                        TaskDialog.Show("Ошибка", "Не удалось выполнить транзакцию.");
-                    }
+
+                    trans.Commit();
                 }
                 else
                 {
@@ -214,20 +239,6 @@ namespace AR_Finishings
                 }
             }
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         private void SetupWallParameters(Wall wall, double roomLowerOffset, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
