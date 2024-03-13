@@ -54,8 +54,31 @@ namespace AR_Finishings
                 }
             }
 
+
+            // Строим путь к файлу logs.txt в Teams
+            string teamsLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                               "Microsoft", "Teams", "logs.txt");
+
+            // Проверяем существование файла logs.txt
+            if (!File.Exists(teamsLogPath))
+            {
+                TaskDialog.Show("Ошибка", "Файл логов Teams не найден.");
+                return false;
+            }
+
+            // Проверяем содержание файла logs.txt на наличие нужной строки
+            bool isCorporateParametersValid = false;
+            foreach (string line in File.ReadLines(teamsLogPath))
+            {
+                if (line.Contains("@dpm.global"))
+                {
+                    isCorporateParametersValid = true;
+                    break;
+                }
+            }
+
             // Проверяем все условия вместе
-            if (!isRevitUserNameValid || !isFileNameValid || !isExternalParametersValid)
+            if (!isRevitUserNameValid || !isFileNameValid || !isExternalParametersValid || !isCorporateParametersValid)
             {
                 TaskDialog.Show("Ошибка", "Верификация конфигурации не пройдена. Обратитесь к разработчику.");
                 return false;
