@@ -5,16 +5,24 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows.Media;
 
 namespace AR_Finishings
 {
     public class RoomBoundaryFloorGenerator
     {
         private Document _doc;
+        private List<Floor> createdFloors;
+        private Dictionary<ElementId, List<ElementId>> floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
+        private Dictionary<ElementId, IList<IList<BoundarySegment>>> createdCurves = new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
 
         public RoomBoundaryFloorGenerator(Document doc)
         {
             _doc = doc;
+            createdFloors = new List<Floor>();
+            floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
+            createdCurves = new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
+
         }
 
         public void CreateFloors(IEnumerable<ElementId> selectedRoomIds, FloorType selectedFloorType)
@@ -53,12 +61,19 @@ namespace AR_Finishings
 
                                 if (loops.Count > 0)
                                 {
-                                    Floor floor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
-                                    floor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
+                                    Floor createdFloor = Floor.Create(_doc, loops, selectedFloorType.Id, level.Id);
+                                    createdFloor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(roomLowerOffset);
+                                    createdFloors.Add(createdFloor);
+                                    // Получаем границы основного пола и сохраняем их в словарь
+                                    IList<IList<BoundarySegment>> createdBoundaries = room.GetBoundarySegments(new SpatialElementBoundaryOptions());
+                                    createdCurves.Add(createdFloor.Id, createdBoundaries);
+
                                     // Setting parameters
-                                    SetupFloorParameters(floor, roomNameValue, roomNumberValue, levelRoomStringValue);
+                                    SetupFloorParameters(createdFloor, roomNameValue, roomNumberValue, levelRoomStringValue);
+
+                                    
                                 }
-                                
+
                             }
                         }
                     }
@@ -66,6 +81,217 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
+
+        public void CheckFloorsAndDoorsIntersection()
+        {
+            using (Transaction trans = new Transaction(_doc, "Check Floors and Doors Intersection"))
+            {
+                trans.Start();
+
+                
+                floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
+                foreach (Floor floor in createdFloors)
+                {
+                    BoundingBoxXYZ floorBox = floor.get_BoundingBox(null);
+                    if (floorBox == null || floorBox.Min.IsAlmostEqualTo(floorBox.Max))
+                    {
+                        continue;
+                    }
+
+                    // Устанавливаем смещение только по координате Z
+                    double offset = 200 / 304.8; // Преобразуем миллиметры в футы
+                    XYZ minPoint = floorBox.Min - new XYZ(0, 0, offset);
+                    XYZ maxPoint = floorBox.Max + new XYZ(0, 0, offset);
+
+                    Outline floorOutline = new Outline(minPoint, maxPoint);
+                    BoundingBoxIntersectsFilter filter = new BoundingBoxIntersectsFilter(floorOutline);
+                    FilteredElementCollector collector = new FilteredElementCollector(_doc)
+                        .OfCategory(BuiltInCategory.OST_Doors)
+                        .WherePasses(filter);
+
+                    List<ElementId> intersectingDoors = new List<ElementId>();
+                    foreach (Element door in collector)
+                    {
+                        intersectingDoors.Add(door.Id);
+                    }
+
+                    if (intersectingDoors.Count > 0)
+                    {
+                        floorDoorIntersections.Add(floor.Id, intersectingDoors);
+                    }
+                }
+
+                StringBuilder sb = new StringBuilder();
+                foreach (var kvp in floorDoorIntersections)
+                {
+                    foreach (var doorId in kvp.Value)
+                    {
+                        sb.AppendLine($"Floor ID: {kvp.Key.Value} : Door ID: {doorId.Value}");
+                    }
+                }
+
+                if (sb.Length > 0)
+                {
+                    TaskDialog.Show("Intersections", sb.ToString());
+                }
+                else
+                {
+                    TaskDialog.Show("Intersections", "No intersections found.");
+                }
+
+                trans.Commit();
+            }
+        }
+        public void FloorCutDoor(double doorThickness)
+        {
+            // Проверяем, есть ли какие-либо данные о пересечениях пола и дверей
+            if (floorDoorIntersections == null || floorDoorIntersections.Count == 0)
+            {
+                TaskDialog.Show("Error", "No floor-door intersections found.");
+                return;
+            }
+
+            // Проходимся по каждому полу в списке пересечений
+            foreach (var kvp in floorDoorIntersections)
+            {
+                Floor originalFloor = _doc.GetElement(kvp.Key) as Floor;
+                if (originalFloor == null)
+                {
+                    TaskDialog.Show("Error", "Original floor not found.");
+                    continue;
+                }
+
+                // Проверяем, есть ли данные о границах основного пола
+                if (!createdCurves.ContainsKey(originalFloor.Id))
+                {
+                    TaskDialog.Show("Error", "No boundary segments found for the specified floor.");
+                    continue;
+                }
+
+                // Получаем данные о границах основного пола из сохраненных данных
+                IList<IList<BoundarySegment>> boundaries = createdCurves[originalFloor.Id];
+
+                // Получаем список дверей, пересекающихся с данным полом
+                List<ElementId> intersectingDoors = kvp.Value;
+
+                // Проходимся по каждой двери и выполняем вырез пола
+                foreach (ElementId doorId in intersectingDoors)
+                {
+                    Element door = _doc.GetElement(doorId);
+                    if (door == null || !(door is FamilyInstance)) // Проверяем, что элемент является экземпляром семейства (дверью)
+                        continue;
+
+                    FamilyInstance doorInstance = door as FamilyInstance;
+                    if (doorInstance == null)
+                        continue;
+
+                    // Получаем толщину стены, к которой привязана дверь
+                    Parameter hostParam = doorInstance.get_Parameter(BuiltInParameter.HOST_ID_PARAM);
+                    Element hostWall = _doc.GetElement(hostParam.AsElementId());
+                    double wallThickness = hostWall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM).AsDouble() / 2;
+
+                    // Получаем центральную линию двери
+                    LocationCurve doorLocation = doorInstance.Location as LocationCurve;
+                    if (doorLocation == null)
+                        continue;
+
+                    Curve doorCurve = doorLocation.Curve;
+
+                    // Получаем центральную точку двери
+                    XYZ doorCenter = (doorCurve.GetEndPoint(0) + doorCurve.GetEndPoint(1)) / 2;
+
+                    // Проверяем, что у пола есть границы
+                    if (boundaries != null && boundaries.Count > 0)
+                    {
+                        // Создаем новый контур пола с учетом выреза
+                        List<Curve> newBoundarySegments = new List<Curve>();
+                        foreach (IList<BoundarySegment> segments in boundaries)
+                        {
+                            foreach (BoundarySegment segment in segments)
+                            {
+                                Curve segmentCurve = segment.GetCurve();
+
+                                // Находим точку пересечения центральной линии двери с контуром пола
+                                IntersectionResult intersectionResult = segmentCurve.Project(doorCenter);
+                                if (intersectionResult != null && intersectionResult.XYZPoint != null)
+                                {
+                                    XYZ intersectionPoint = intersectionResult.XYZPoint;
+
+                                    // Добавляем сегменты границы до точки пересечения
+                                    if (segmentCurve.GetEndPoint(0).DistanceTo(intersectionPoint) <= 0)
+                                    {
+                                        newBoundarySegments.Add(segmentCurve);
+                                    }
+                                    // Добавляем отрезок после точки пересечения
+                                    else
+                                    {
+                                        // Создаем новый отрезок от точки пересечения до конечной точки сегмента
+                                        Line line = Line.CreateBound(intersectionPoint, segmentCurve.GetEndPoint(1));
+                                        newBoundarySegments.Add(line);
+                                    }
+                                }
+                                else
+                                {
+                                    // Если точка пересечения не найдена, просто добавляем текущий сегмент
+                                    newBoundarySegments.Add(segmentCurve);
+                                }
+                            }
+                        }
+
+                        // Создаем новый контур пола
+                        CurveLoop newBoundary = CurveLoop.Create(newBoundarySegments);
+                        List<CurveLoop> loops = new List<CurveLoop> { newBoundary };
+
+                        // Получаем параметры исходного пола
+                        FloorType originalFloorType = _doc.GetElement(originalFloor.FloorType.Id) as FloorType;
+                        Level originalLevel = _doc.GetElement(originalFloor.LevelId) as Level;
+
+                        // Создаем новый пол с учетом выреза
+                        Floor createdFloor = Floor.Create(_doc, loops, originalFloorType.Id, originalLevel.Id);
+                        createdFloor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(originalFloor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).AsDouble());
+
+                        // Копируем общие параметры из исходного пола
+                        CopyParameters(originalFloor, createdFloor);
+                    }
+                }
+            }
+        }
+
+
+
+
+
+
+
+        private void CopyParameters(Floor source, Floor target)
+        {
+            // Копируем параметры из одного элемента в другой
+            foreach (Parameter param in source.Parameters)
+            {
+                if (param.IsReadOnly || param.StorageType == StorageType.ElementId)
+                    continue;
+
+                Parameter targetParam = target.get_Parameter(param.Definition);
+                if (targetParam != null && targetParam.StorageType == param.StorageType)
+                {
+                    switch (param.StorageType)
+                    {
+                        case StorageType.Double:
+                            targetParam.Set(param.AsDouble());
+                            break;
+                        case StorageType.Integer:
+                            targetParam.Set(param.AsInteger());
+                            break;
+                        case StorageType.String:
+                            targetParam.Set(param.AsString());
+                            break;
+                    }
+                }
+            }
+        }
+
+
+
         private void SetupFloorParameters(Floor floor, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
         {
 

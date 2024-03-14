@@ -68,13 +68,27 @@ namespace AR_Finishings
 
             // Проверяем содержание файла logs.txt на наличие нужной строки
             bool isCorporateParametersValid = false;
-            foreach (string line in File.ReadLines(teamsLogPath))
+            try
             {
-                if (line.Contains("@dpm.global"))
+                using (FileStream fs = new FileStream(teamsLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (StreamReader sr = new StreamReader(fs))
                 {
-                    isCorporateParametersValid = true;
-                    break;
+                    string line;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        if (line.Contains("@dpm.global"))
+                        {
+                            isCorporateParametersValid = true;
+                            break; // Нашли нужную строку, прерываем чтение файла
+                        }
+                    }
                 }
+            }
+            catch (IOException ex)
+            {
+                // Можно залоггировать исключение, если нужно
+                TaskDialog.Show("Ошибка", "Не удалось прочитать файл логов Teams из-за ошибки ввода/вывода: " + ex.Message);
+                return false;
             }
 
             // Проверяем все условия вместе

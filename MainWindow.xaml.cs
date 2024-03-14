@@ -126,6 +126,8 @@ namespace AR_Finishings
             {
                 RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
                 floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
+                floorGenerator.CheckFloorsAndDoorsIntersection();
+                //floorGenerator.FloorCutDoor();
             }
             // Используем метод для генерации полов с использованием выбранных параметров
             if (selectedWallType != null)
