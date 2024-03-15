@@ -108,6 +108,7 @@ namespace AR_Finishings
             WallType selectedSkirtType = selectSkirtsComboBox.SelectedItem as WallType;
 
 
+
             if (_isParametersCheckboxChecked)
             {
                 // Если чекбокс отмечен, вызываем методы из класса Preparations
@@ -124,10 +125,11 @@ namespace AR_Finishings
             // Используем метод для генерации полов с использованием выбранных параметров
             if (selectedFloorType != null)
             {
+                // Вызываем метод для генерации полов с использованием выбранных параметров
                 RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
                 floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
                 floorGenerator.CheckFloorsAndDoorsIntersection();
-                //floorGenerator.FloorCutDoor();
+                floorGenerator.FloorCutDoor();
             }
             // Используем метод для генерации полов с использованием выбранных параметров
             if (selectedWallType != null)

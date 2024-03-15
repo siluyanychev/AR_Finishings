@@ -71,7 +71,7 @@ namespace AR_Finishings
                                     // Setting parameters
                                     SetupFloorParameters(createdFloor, roomNameValue, roomNumberValue, levelRoomStringValue);
 
-                                    
+
                                 }
 
                             }
@@ -88,7 +88,7 @@ namespace AR_Finishings
             {
                 trans.Start();
 
-                
+
                 floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
                 foreach (Floor floor in createdFloors)
                 {
@@ -142,154 +142,114 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
-        public void FloorCutDoor(double doorThickness)
+        public void FloorCutDoor()
         {
-            // Проверяем, есть ли какие-либо данные о пересечениях пола и дверей
-            if (floorDoorIntersections == null || floorDoorIntersections.Count == 0)
+            using (Transaction trans = new Transaction(_doc, "Modify Floors for Door Thresholds"))
             {
-                TaskDialog.Show("Error", "No floor-door intersections found.");
-                return;
-            }
+                trans.Start();
 
-            // Проходимся по каждому полу в списке пересечений
-            foreach (var kvp in floorDoorIntersections)
-            {
-                Floor originalFloor = _doc.GetElement(kvp.Key) as Floor;
-                if (originalFloor == null)
+                foreach (Floor floor in createdFloors)
                 {
-                    TaskDialog.Show("Error", "Original floor not found.");
-                    continue;
-                }
-
-                // Проверяем, есть ли данные о границах основного пола
-                if (!createdCurves.ContainsKey(originalFloor.Id))
-                {
-                    TaskDialog.Show("Error", "No boundary segments found for the specified floor.");
-                    continue;
-                }
-
-                // Получаем данные о границах основного пола из сохраненных данных
-                IList<IList<BoundarySegment>> boundaries = createdCurves[originalFloor.Id];
-
-                // Получаем список дверей, пересекающихся с данным полом
-                List<ElementId> intersectingDoors = kvp.Value;
-
-                // Проходимся по каждой двери и выполняем вырез пола
-                foreach (ElementId doorId in intersectingDoors)
-                {
-                    Element door = _doc.GetElement(doorId);
-                    if (door == null || !(door is FamilyInstance)) // Проверяем, что элемент является экземпляром семейства (дверью)
-                        continue;
-
-                    FamilyInstance doorInstance = door as FamilyInstance;
-                    if (doorInstance == null)
-                        continue;
-
-                    // Получаем толщину стены, к которой привязана дверь
-                    Parameter hostParam = doorInstance.get_Parameter(BuiltInParameter.HOST_ID_PARAM);
-                    Element hostWall = _doc.GetElement(hostParam.AsElementId());
-                    double wallThickness = hostWall.get_Parameter(BuiltInParameter.WALL_ATTR_WIDTH_PARAM).AsDouble() / 2;
-
-                    // Получаем центральную линию двери
-                    LocationCurve doorLocation = doorInstance.Location as LocationCurve;
-                    if (doorLocation == null)
-                        continue;
-
-                    Curve doorCurve = doorLocation.Curve;
-
-                    // Получаем центральную точку двери
-                    XYZ doorCenter = (doorCurve.GetEndPoint(0) + doorCurve.GetEndPoint(1)) / 2;
-
-                    // Проверяем, что у пола есть границы
-                    if (boundaries != null && boundaries.Count > 0)
+                    ElementId floorId = floor.Id;
+                    if (floorDoorIntersections.TryGetValue(floorId, out List<ElementId> intersectingDoors))
                     {
-                        // Создаем новый контур пола с учетом выреза
-                        List<Curve> newBoundarySegments = new List<Curve>();
-                        foreach (IList<BoundarySegment> segments in boundaries)
+                        using (FloorEditScope floorEditScope = new FloorEditScope(_doc, "Edit Floor Boundary"))
                         {
-                            foreach (BoundarySegment segment in segments)
+                            floorEditScope.Start(floorId);
+
+                            foreach (ElementId doorId in intersectingDoors)
                             {
-                                Curve segmentCurve = segment.GetCurve();
+                                FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
+                                LocationPoint doorLocation = door.Location as LocationPoint;
 
-                                // Находим точку пересечения центральной линии двери с контуром пола
-                                IntersectionResult intersectionResult = segmentCurve.Project(doorCenter);
-                                if (intersectionResult != null && intersectionResult.XYZPoint != null)
+                                if (doorLocation != null)
                                 {
-                                    XYZ intersectionPoint = intersectionResult.XYZPoint;
+                                    // Получаем трансформацию для двери (учитываем положение и ориентацию)
+                                    Transform doorTransform = doorLocation.Point is XYZ point ? Transform.CreateTranslation(point - XYZ.Zero) : Transform.Identity;
+                                    XYZ doorDirection = door.FacingOrientation;
+                                    XYZ doorNormal = doorTransform.OfVector(doorDirection.CrossProduct(XYZ.BasisZ));
 
-                                    // Добавляем сегменты границы до точки пересечения
-                                    if (segmentCurve.GetEndPoint(0).DistanceTo(intersectionPoint) <= 0)
-                                    {
-                                        newBoundarySegments.Add(segmentCurve);
-                                    }
-                                    // Добавляем отрезок после точки пересечения
-                                    else
-                                    {
-                                        // Создаем новый отрезок от точки пересечения до конечной точки сегмента
-                                        Line line = Line.CreateBound(intersectionPoint, segmentCurve.GetEndPoint(1));
-                                        newBoundarySegments.Add(line);
-                                    }
-                                }
-                                else
-                                {
-                                    // Если точка пересечения не найдена, просто добавляем текущий сегмент
-                                    newBoundarySegments.Add(segmentCurve);
+                                    // Получаем ширину двери
+                                    Parameter doorWidthParam = door.get_Parameter(BuiltInParameter.DOOR_WIDTH);
+                                    double doorWidth = doorWidthParam.AsDouble();
+
+                                    // Вычисляем половину ширины двери для смещения
+                                    double halfDoorWidth = doorWidth / 2;
+
+                                    // Получаем границы текущего пола
+                                    EdgeArrayArray floorEdgeArrayArray = floor.GetEdgesAsCurveLoops();
+                                    CurveLoop largestCurveLoop = GetLargestCurveLoop(floorEdgeArrayArray);
+
+                                    // Редактируем границы пола, добавляя сегменты
+                                    CurveLoop newCurveLoop = CurveLoop.CreateViaOffset(largestCurveLoop, halfDoorWidth, doorNormal);
+
+                                    // Удаляем исходные сегменты пола, которые попадают внутрь нового контура
+                                    RemoveRedundantSegments(largestCurveLoop, newCurveLoop);
+
+                                    // Создаем новые отрезки для объединения с основным контуром пола
+                                    ConnectNewAndOldSegments(largestCurveLoop, newCurveLoop);
+
+                                    // Применяем изменения к границам пола
+                                    floorEditScope.PerformCommit(newCurveLoop);
                                 }
                             }
+
+                            floorEditScope.Commit(_doc);
                         }
-
-                        // Создаем новый контур пола
-                        CurveLoop newBoundary = CurveLoop.Create(newBoundarySegments);
-                        List<CurveLoop> loops = new List<CurveLoop> { newBoundary };
-
-                        // Получаем параметры исходного пола
-                        FloorType originalFloorType = _doc.GetElement(originalFloor.FloorType.Id) as FloorType;
-                        Level originalLevel = _doc.GetElement(originalFloor.LevelId) as Level;
-
-                        // Создаем новый пол с учетом выреза
-                        Floor createdFloor = Floor.Create(_doc, loops, originalFloorType.Id, originalLevel.Id);
-                        createdFloor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).Set(originalFloor.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM).AsDouble());
-
-                        // Копируем общие параметры из исходного пола
-                        CopyParameters(originalFloor, createdFloor);
                     }
                 }
+
+                trans.Commit();
             }
         }
 
+        // Вспомогательные методы
 
-
-
-
-
-
-        private void CopyParameters(Floor source, Floor target)
+        CurveLoop GetLargestCurveLoop(EdgeArrayArray edgeArrayArray)
         {
-            // Копируем параметры из одного элемента в другой
-            foreach (Parameter param in source.Parameters)
-            {
-                if (param.IsReadOnly || param.StorageType == StorageType.ElementId)
-                    continue;
+            CurveLoop largestLoop = null;
+            double maxArea = 0.0;
 
-                Parameter targetParam = target.get_Parameter(param.Definition);
-                if (targetParam != null && targetParam.StorageType == param.StorageType)
+            foreach (EdgeArray edgeArray in edgeArrayArray)
+            {
+                CurveLoop curveLoop = new CurveLoop();
+                foreach (Edge edge in edgeArray)
                 {
-                    switch (param.StorageType)
-                    {
-                        case StorageType.Double:
-                            targetParam.Set(param.AsDouble());
-                            break;
-                        case StorageType.Integer:
-                            targetParam.Set(param.AsInteger());
-                            break;
-                        case StorageType.String:
-                            targetParam.Set(param.AsString());
-                            break;
-                    }
+                    curveLoop.Append(edge.AsCurve());
+                }
+
+                double currentArea = GetCurveLoopArea(curveLoop);
+                if (currentArea > maxArea)
+                {
+                    largestLoop = curveLoop;
+                    maxArea = currentArea;
                 }
             }
+
+            return largestLoop;
         }
 
+        void RemoveRedundantSegments(CurveLoop existingLoop, CurveLoop newLoop)
+        {
+            // Реализация логики удаления лишних отрезков
+        }
+
+        void ConnectNewAndOldSegments(CurveLoop existingLoop, CurveLoop newLoop)
+        {
+            // Реализация логики соединения новых и старых отрезков
+        }
+
+        double GetCurveLoopArea(CurveLoop curveLoop)
+        {
+            // Реализация расчета площади CurveLoop
+        }
+
+
+
+
+
+
+        // TODO: Implement the details of each TODO step.
 
 
         private void SetupFloorParameters(Floor floor, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
