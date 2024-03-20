@@ -18,9 +18,15 @@
             <CheckBox x:Name="getParametersCheckbox" Content="Get Parameters" Checked="CheckBox_GetParameters" Unchecked="CheckBox_GetParameters" />
             <Separator Height="15" />
 
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center" HorizontalAlignment="Stretch">
-                <Label Content="Select Floors" Width="90" VerticalContentAlignment="Bottom" HorizontalAlignment="Left"  />
-                <ComboBox x:Name="selectFloorsComboBox" Width="290" Margin="0,10,0,0" Height="25" HorizontalAlignment="Right" />
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                <Label Content="Select Floors" Width="90" VerticalContentAlignment="Bottom" />
+                <ComboBox x:Name="selectFloorsComboBox" Width="160" Margin="0,10,0,0" Height="25" />
+                <StackPanel x:Name="DoorDepthOptionsPanel" Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                    <RadioButton Content="0" IsChecked="True" Margin="0,0,10,0" Checked="RadioButton_DoorDepth_Checked"/>
+                    <RadioButton GroupName="DoorDepthOptions" Content="0.5" Margin="0,0,10,0" Checked="RadioButton_DoorDepth_Checked"/>
+                    <RadioButton GroupName="DoorDepthOptions" Content="1" Checked="RadioButton_DoorDepth_Checked"/>
+                </StackPanel>
+
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">

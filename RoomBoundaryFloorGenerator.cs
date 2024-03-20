@@ -12,16 +12,21 @@ namespace AR_Finishings
     public class RoomBoundaryFloorGenerator
     {
         private Document _doc;
+        private double _doorDepth;
+        public double DoorDepth { get; set; }
         private List<Floor> createdFloors;
         private Dictionary<ElementId, List<ElementId>> floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
         private Dictionary<ElementId, IList<IList<BoundarySegment>>> createdCurves = new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
+        private List<ModelCurve> phantomLines;
 
-        public RoomBoundaryFloorGenerator(Document doc)
+
+        public RoomBoundaryFloorGenerator(Document doc, double doorDepth)
         {
             _doc = doc;
             createdFloors = new List<Floor>();
-            floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
+            phantomLines = new List<ModelCurve>();
             createdCurves = new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
+            _doorDepth = doorDepth;
 
         }
 
@@ -142,59 +147,74 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
+
         public void FloorCutDoor()
         {
-            using (Transaction trans = new Transaction(_doc, "Modify Floors for Door Thresholds"))
+            using (Transaction trans = new Transaction(_doc, "Visualize Door Thresholds"))
             {
                 trans.Start();
 
-                foreach (Floor floor in createdFloors)
+                foreach (var kvp in floorDoorIntersections)
                 {
-                    ElementId floorId = floor.Id;
-                    if (floorDoorIntersections.TryGetValue(floorId, out List<ElementId> intersectingDoors))
+                    Floor floor = _doc.GetElement(kvp.Key) as Floor;
+                    if (floor != null)
                     {
-                        using (FloorEditScope floorEditScope = new FloorEditScope(_doc, "Edit Floor Boundary"))
+                        foreach (ElementId doorId in kvp.Value)
                         {
-                            floorEditScope.Start(floorId);
-
-                            foreach (ElementId doorId in intersectingDoors)
+                            FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
+                            if (door != null && door.Host is Wall hostWall)
                             {
-                                FamilyInstance door = _doc.GetElement(doorId) as FamilyInstance;
+                                double wallWidth = hostWall.Width;
                                 LocationPoint doorLocation = door.Location as LocationPoint;
-
                                 if (doorLocation != null)
                                 {
-                                    // Получаем трансформацию для двери (учитываем положение и ориентацию)
-                                    Transform doorTransform = doorLocation.Point is XYZ point ? Transform.CreateTranslation(point - XYZ.Zero) : Transform.Identity;
-                                    XYZ doorDirection = door.FacingOrientation;
-                                    XYZ doorNormal = doorTransform.OfVector(doorDirection.CrossProduct(XYZ.BasisZ));
+                                    XYZ doorCenter = doorLocation.Point;
+                                    XYZ doorOrientation = door.HandOrientation;
+                                    XYZ wallDirection = hostWall.Orientation.Normalize();
+                                    double doorWidth = door.get_Parameter(BuiltInParameter.DOOR_WIDTH).AsDouble();
+                                    double halfDoorWidth = doorWidth / 2.0;
 
-                                    // Получаем ширину двери
-                                    Parameter doorWidthParam = door.get_Parameter(BuiltInParameter.DOOR_WIDTH);
-                                    double doorWidth = doorWidthParam.AsDouble();
+                                    // Определяем направление открытия двери относительно стены
+                                    bool isOutwardOpening = doorOrientation.CrossProduct(wallDirection).IsAlmostEqualTo(XYZ.BasisZ);
 
-                                    // Вычисляем половину ширины двери для смещения
-                                    double halfDoorWidth = doorWidth / 2;
+                                    // Определяем глубину вырезания в зависимости от выбранной опции
+                                    double cutDepth = 0.0; // Инициализируем с нулевой глубиной
+                                    if (DoorDepth == 0.5)
+                                    {
+                                        cutDepth = wallWidth / 4.0; // Половина ширины стены
+                                    }
+                                    else if (DoorDepth == 1)
+                                    {
+                                        cutDepth = wallWidth / 2.0; // Полная ширина стены
+                                    }
 
-                                    // Получаем границы текущего пола
-                                    EdgeArrayArray floorEdgeArrayArray = floor.GetEdgesAsCurveLoops();
-                                    CurveLoop largestCurveLoop = GetLargestCurveLoop(floorEdgeArrayArray);
+                                    // Вычисляем левый и правый край двери
+                                    XYZ leftEdge = doorCenter - wallDirection * halfDoorWidth;
+                                    XYZ rightEdge = doorCenter + wallDirection * halfDoorWidth;
 
-                                    // Редактируем границы пола, добавляя сегменты
-                                    CurveLoop newCurveLoop = CurveLoop.CreateViaOffset(largestCurveLoop, halfDoorWidth, doorNormal);
+                                    // Смещаем левый и правый край двери на глубину вырезания
+                                    XYZ startCut = leftEdge - wallDirection * 500 / 308.4;
+                                    XYZ endCut = rightEdge + wallDirection * 500 / 308.4;
 
-                                    // Удаляем исходные сегменты пола, которые попадают внутрь нового контура
-                                    RemoveRedundantSegments(largestCurveLoop, newCurveLoop);
+                                    // Если дверь открывается наружу, меняем направление отрезка
+                                    if (isOutwardOpening)
+                                    {
+                                        XYZ temp = startCut;
+                                        startCut = endCut;
+                                        endCut = temp;
+                                    }
 
-                                    // Создаем новые отрезки для объединения с основным контуром пола
-                                    ConnectNewAndOldSegments(largestCurveLoop, newCurveLoop);
+                                    // Создание модельной линии на основе вычисленных точек
+                                    SketchPlane sketchPlane = SketchPlane.Create(_doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, doorCenter));
+                                    ModelCurve modelCurve = CreateModelLine(startCut, endCut, sketchPlane);
 
-                                    // Применяем изменения к границам пола
-                                    floorEditScope.PerformCommit(newCurveLoop);
+                                    // Добавляем созданную модельную линию в список phantomLines
+                                    phantomLines.Add(modelCurve);
+
+                                    // Вызываем метод для создания новых точек старта и конца
+                                    NewStartPoints(cutDepth);
                                 }
                             }
-
-                            floorEditScope.Commit(_doc);
                         }
                     }
                 }
@@ -203,51 +223,69 @@ namespace AR_Finishings
             }
         }
 
-        // Вспомогательные методы
 
-        CurveLoop GetLargestCurveLoop(EdgeArrayArray edgeArrayArray)
+
+
+        private ModelCurve CreateModelLine(XYZ start, XYZ end, SketchPlane sketchPlane)
         {
-            CurveLoop largestLoop = null;
-            double maxArea = 0.0;
-
-            foreach (EdgeArray edgeArray in edgeArrayArray)
+            // Условие для создания линии в зависимости от выбранной глубины
+            if (start.DistanceTo(end) > _doc.Application.ShortCurveTolerance && DoorDepth != 0)
             {
-                CurveLoop curveLoop = new CurveLoop();
-                foreach (Edge edge in edgeArray)
-                {
-                    curveLoop.Append(edge.AsCurve());
-                }
+                Line line = Line.CreateBound(start, end);
+                return _doc.Create.NewModelCurve(line, sketchPlane) as ModelCurve;
+            }
+            return null;
+        }
 
-                double currentArea = GetCurveLoopArea(curveLoop);
-                if (currentArea > maxArea)
+        private void NewStartPoints(double cutDepth)
+        {
+            // Создаем новые списки для хранения новых отрезков
+            List<ModelCurve> newPhantomLines = new List<ModelCurve>();
+
+            foreach (ModelCurve phantomLine in phantomLines)
+            {
+                foreach (var curveKvp in createdCurves)
                 {
-                    largestLoop = curveLoop;
-                    maxArea = currentArea;
+                    foreach (IList<BoundarySegment> boundarySegments in curveKvp.Value)
+                    {
+                        foreach (BoundarySegment boundarySegment in boundarySegments)
+                        {
+                            // Находим пересечение phantomLine и текущего boundarySegment
+                            IntersectionResultArray intersectionResultArray;
+                            SetComparisonResult result = boundarySegment.GetCurve().Intersect(phantomLine.GeometryCurve, out intersectionResultArray);
+                            if (result == SetComparisonResult.Overlap)
+                            {
+                                foreach (IntersectionResult intersectionResult in intersectionResultArray)
+                                {
+                                    XYZ intersectionPoint = intersectionResult.XYZPoint;
+
+                                    // Находим направление перпендикулярное boundarySegment
+                                    XYZ tangent = boundarySegment.GetCurve().ComputeDerivatives(0.5, true).BasisX.Normalize();
+                                    XYZ perpendicular = new XYZ(-tangent.Y, tangent.X, tangent.Z); // Перпендикуляр к кривой
+
+                                    // Вычисляем новые точки старта и конца отрезка на расстоянии cutDepth
+                                    XYZ startCut = intersectionPoint - perpendicular * cutDepth *2;
+                                    XYZ endCut = intersectionPoint;
+
+                                    // Создаем отрезок на основе новых точек и добавляем его в новый список
+                                    ModelCurve newModelCurve = CreateModelLine(startCut, endCut, phantomLine.SketchPlane);
+                                    newPhantomLines.Add(newModelCurve);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            return largestLoop;
+            // Удаляем старые отрезки из списка
+            foreach (ModelCurve modelCurve in phantomLines)
+            {
+                _doc.Delete(modelCurve.Id);
+            }
+
+            // Заменяем старый список новым
+            phantomLines = newPhantomLines;
         }
-
-        void RemoveRedundantSegments(CurveLoop existingLoop, CurveLoop newLoop)
-        {
-            // Реализация логики удаления лишних отрезков
-        }
-
-        void ConnectNewAndOldSegments(CurveLoop existingLoop, CurveLoop newLoop)
-        {
-            // Реализация логики соединения новых и старых отрезков
-        }
-
-        double GetCurveLoopArea(CurveLoop curveLoop)
-        {
-            // Реализация расчета площади CurveLoop
-        }
-
-
-
-
-
 
         // TODO: Implement the details of each TODO step.
 

@@ -18,6 +18,7 @@ namespace AR_Finishings
     public partial class MainWindow
     {
         // Классы
+        public double DoorDepth { get; set; }
         public ElementTypeSelector ets { get; private set; }
         // Сокращения
         private ResourceManager rm = new ResourceManager("AR_Finishings.Strings", Assembly.GetExecutingAssembly());
@@ -44,6 +45,25 @@ namespace AR_Finishings
             selectFloorsComboBox.ItemsSource = floorTypes;
             selectFloorsComboBox.DisplayMemberPath = "Name"; // Установить отображаемое имя
         }
+
+        private void RadioButton_DoorDepth_Checked(object sender, RoutedEventArgs e)
+        {
+            RadioButton rb = sender as RadioButton;
+            if (rb != null)
+            {
+                // Сбрасываем IsChecked для всех радиокнопок в группе
+                foreach (var radioButton in DoorDepthOptionsPanel.Children.OfType<RadioButton>())
+                {
+                    if (radioButton != rb)
+                    {
+                        radioButton.IsChecked = false;
+                    }
+                }
+                DoorDepth = double.Parse(rb.Content.ToString(), CultureInfo.InvariantCulture);
+            }
+        }
+
+
         private void UpdateCeilingTypes()
         {
             var ceilingTypes = ets.GetCeilingTypes(mainDocument);
@@ -122,11 +142,17 @@ namespace AR_Finishings
                 ceilingGenerator.CreateCeilings(_selectedRoomIds, selectedCeilingType);
             }
 
+            RadioButton selectedRadioButton = DoorDepthOptionsPanel.Children.OfType<RadioButton>().FirstOrDefault(r => r.IsChecked == true);
+            if (selectedRadioButton != null)
+            {
+                DoorDepth = double.Parse(selectedRadioButton.Content.ToString());
+            }
             // Используем метод для генерации полов с использованием выбранных параметров
             if (selectedFloorType != null)
             {
                 // Вызываем метод для генерации полов с использованием выбранных параметров
-                RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument);
+                RoomBoundaryFloorGenerator floorGenerator = new RoomBoundaryFloorGenerator(mainDocument, this.DoorDepth); ;
+                floorGenerator.DoorDepth = this.DoorDepth; // Передаем выбранную глубину двери в генератор
                 floorGenerator.CreateFloors(_selectedRoomIds, selectedFloorType);
                 floorGenerator.CheckFloorsAndDoorsIntersection();
                 floorGenerator.FloorCutDoor();
