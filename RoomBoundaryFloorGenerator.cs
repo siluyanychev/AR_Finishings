@@ -1,4 +1,5 @@
-﻿using Autodesk.Revit.DB;
+﻿
+using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using System;
@@ -6,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Windows.Media;
+using Color = Autodesk.Revit.DB.Color;
+using Transform = Autodesk.Revit.DB.Transform;
 
 namespace AR_Finishings
 {
@@ -13,6 +16,7 @@ namespace AR_Finishings
     {
         private Document _doc;
         private double _doorDepth;
+        private double doorWidth;
         public double DoorDepth { get; set; }
         private List<Floor> createdFloors;
         private Dictionary<ElementId, List<ElementId>> floorDoorIntersections = new Dictionary<ElementId, List<ElementId>>();
@@ -27,6 +31,8 @@ namespace AR_Finishings
             phantomLines = new List<ModelCurve>();
             createdCurves = new Dictionary<ElementId, IList<IList<BoundarySegment>>>();
             _doorDepth = doorDepth;
+
+
 
         }
 
@@ -171,48 +177,57 @@ namespace AR_Finishings
                                     XYZ doorCenter = doorLocation.Point;
                                     XYZ doorOrientation = door.HandOrientation;
                                     XYZ wallDirection = hostWall.Orientation.Normalize();
-                                    double doorWidth = door.get_Parameter(BuiltInParameter.DOOR_WIDTH).AsDouble();
-                                    double halfDoorWidth = doorWidth / 2.0;
 
-                                    // Определяем направление открытия двери относительно стены
-                                    bool isOutwardOpening = doorOrientation.CrossProduct(wallDirection).IsAlmostEqualTo(XYZ.BasisZ);
-
-                                    // Определяем глубину вырезания в зависимости от выбранной опции
-                                    double cutDepth = 0.0; // Инициализируем с нулевой глубиной
-                                    if (DoorDepth == 0.5)
+                                    ElementType doorType = _doc.GetElement(door.GetTypeId()) as ElementType;
+                                    if (doorType != null)
                                     {
-                                        cutDepth = wallWidth / 4.0; // Половина ширины стены
+                                        Parameter doorWidthParam = doorType.get_Parameter(BuiltInParameter.DOOR_WIDTH);
+                                        if (doorWidthParam != null)
+                                        {
+                                            double doorWidth = doorWidthParam.AsDouble();
+                                            double halfDoorWidth = doorWidth / 2.0;
+
+                                            // Определяем направление открытия двери относительно стены
+                                            bool isOutwardOpening = doorOrientation.CrossProduct(wallDirection).IsAlmostEqualTo(XYZ.BasisZ);
+
+                                            // Определяем глубину вырезания в зависимости от выбранной опции
+                                            double cutDepth = 0.0; // Инициализируем с нулевой глубиной
+                                            if (DoorDepth == 0.5)
+                                            {
+                                                cutDepth = wallWidth / 4.0; // Половина ширины стены
+                                            }
+                                            else if (DoorDepth == 1)
+                                            {
+                                                cutDepth = wallWidth / 2.0; // Полная ширина стены
+                                            }
+
+                                            // Вычисляем левый и правый край двери
+                                            XYZ leftEdge = doorCenter - wallDirection * halfDoorWidth;
+                                            XYZ rightEdge = doorCenter + wallDirection * halfDoorWidth;
+
+                                            // Смещаем левый и правый край двери на глубину вырезания
+                                            XYZ startCut = leftEdge - wallDirection;
+                                            XYZ endCut = rightEdge + wallDirection;
+
+                                            // Если дверь открывается наружу, меняем направление отрезка
+                                            if (isOutwardOpening)
+                                            {
+                                                XYZ temp = startCut;
+                                                startCut = endCut;
+                                                endCut = temp;
+                                            }
+
+                                            // Создание модельной линии на основе вычисленных точек
+                                            SketchPlane sketchPlane = SketchPlane.Create(_doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, doorCenter));
+                                            ModelCurve modelCurve = CreateModelLine(startCut, endCut, sketchPlane);
+
+                                            // Добавляем созданную модельную линию в список phantomLines
+                                            phantomLines.Add(modelCurve);
+
+                                            // Вызываем метод для создания новых точек старта и конца
+                                            NewStartPoints(cutDepth, doorWidth);
+                                        }
                                     }
-                                    else if (DoorDepth == 1)
-                                    {
-                                        cutDepth = wallWidth / 2.0; // Полная ширина стены
-                                    }
-
-                                    // Вычисляем левый и правый край двери
-                                    XYZ leftEdge = doorCenter - wallDirection * halfDoorWidth;
-                                    XYZ rightEdge = doorCenter + wallDirection * halfDoorWidth;
-
-                                    // Смещаем левый и правый край двери на глубину вырезания
-                                    XYZ startCut = leftEdge - wallDirection * 500 / 308.4;
-                                    XYZ endCut = rightEdge + wallDirection * 500 / 308.4;
-
-                                    // Если дверь открывается наружу, меняем направление отрезка
-                                    if (isOutwardOpening)
-                                    {
-                                        XYZ temp = startCut;
-                                        startCut = endCut;
-                                        endCut = temp;
-                                    }
-
-                                    // Создание модельной линии на основе вычисленных точек
-                                    SketchPlane sketchPlane = SketchPlane.Create(_doc, Plane.CreateByNormalAndOrigin(XYZ.BasisZ, doorCenter));
-                                    ModelCurve modelCurve = CreateModelLine(startCut, endCut, sketchPlane);
-
-                                    // Добавляем созданную модельную линию в список phantomLines
-                                    phantomLines.Add(modelCurve);
-
-                                    // Вызываем метод для создания новых точек старта и конца
-                                    NewStartPoints(cutDepth);
                                 }
                             }
                         }
@@ -222,8 +237,6 @@ namespace AR_Finishings
                 trans.Commit();
             }
         }
-
-
 
 
         private ModelCurve CreateModelLine(XYZ start, XYZ end, SketchPlane sketchPlane)
@@ -237,10 +250,10 @@ namespace AR_Finishings
             return null;
         }
 
-        private void NewStartPoints(double cutDepth)
+        private void NewStartPoints(double cutDepth, double doorWidth)
         {
-            // Создаем новые списки для хранения новых отрезков
             List<ModelCurve> newPhantomLines = new List<ModelCurve>();
+            List<ModelCurve> upperLines = new List<ModelCurve>();
 
             foreach (ModelCurve phantomLine in phantomLines)
             {
@@ -250,7 +263,6 @@ namespace AR_Finishings
                     {
                         foreach (BoundarySegment boundarySegment in boundarySegments)
                         {
-                            // Находим пересечение phantomLine и текущего boundarySegment
                             IntersectionResultArray intersectionResultArray;
                             SetComparisonResult result = boundarySegment.GetCurve().Intersect(phantomLine.GeometryCurve, out intersectionResultArray);
                             if (result == SetComparisonResult.Overlap)
@@ -259,17 +271,38 @@ namespace AR_Finishings
                                 {
                                     XYZ intersectionPoint = intersectionResult.XYZPoint;
 
-                                    // Находим направление перпендикулярное boundarySegment
                                     XYZ tangent = boundarySegment.GetCurve().ComputeDerivatives(0.5, true).BasisX.Normalize();
-                                    XYZ perpendicular = new XYZ(-tangent.Y, tangent.X, tangent.Z); // Перпендикуляр к кривой
+                                    XYZ perpendicular = new XYZ(-tangent.Y, tangent.X, tangent.Z);
+                                    XYZ wallDirection = boundarySegment.GetCurve().ComputeDerivatives(0.5, true).BasisY.Normalize();
 
-                                    // Вычисляем новые точки старта и конца отрезка на расстоянии cutDepth
-                                    XYZ startCut = intersectionPoint - perpendicular * cutDepth *2;
-                                    XYZ endCut = intersectionPoint;
+                                    // Изменяем конечную точку линии на правую сторону двери
+                                    XYZ startCut = intersectionPoint - perpendicular * cutDepth * 2;
+                                    XYZ endCut = intersectionPoint + wallDirection * doorWidth / 2.0;
 
-                                    // Создаем отрезок на основе новых точек и добавляем его в новый список
                                     ModelCurve newModelCurve = CreateModelLine(startCut, endCut, phantomLine.SketchPlane);
                                     newPhantomLines.Add(newModelCurve);
+                                    ChangeColor(newModelCurve, new Autodesk.Revit.DB.Color(255, 0, 0));
+
+                                    // Создаем точки для верхней линии
+                                    XYZ startUpPoint = startCut + perpendicular * doorWidth / 2.0;
+                                    XYZ endUpPoint = startCut - perpendicular * doorWidth / 2.0;
+
+                                    // Находим середину желтого отрезка
+                                    XYZ midYellowPoint = (startUpPoint + endUpPoint) / 2.0;
+
+                                    // Находим вектор, соединяющий начальную и конечную точки желтого отрезка
+                                    XYZ yellowVector = (endUpPoint - startUpPoint).Normalize();
+
+                                    // Поворачиваем вектор на 90 градусов по часовой стрелке
+                                    XYZ rotatedDirection = new XYZ(-yellowVector.Y, yellowVector.X, yellowVector.Z);
+
+                                    // Создаем точки для верхней линии, учитывая поворот на 90 градусов по часовой стрелке
+                                    XYZ startUpPointNew = midYellowPoint + rotatedDirection * doorWidth / 2.0;
+                                    XYZ endUpPointNew = midYellowPoint - rotatedDirection * doorWidth / 2.0;
+
+                                    ModelCurve newModelUpCurve = CreateModelLine(startUpPointNew, endUpPointNew, phantomLine.SketchPlane);
+                                    upperLines.Add(newModelUpCurve);
+                                    ChangeColor(newModelUpCurve, new Autodesk.Revit.DB.Color(255, 255, 0));
                                 }
                             }
                         }
@@ -283,11 +316,20 @@ namespace AR_Finishings
                 _doc.Delete(modelCurve.Id);
             }
 
-            // Заменяем старый список новым
+            // Заменяем старый список смещенными отрезками
             phantomLines = newPhantomLines;
         }
 
-        // TODO: Implement the details of each TODO step.
+
+        // Метод для изменения цвета модельной кривой
+        private void ChangeColor(ModelCurve modelCurve, Autodesk.Revit.DB.Color color)
+        {
+            OverrideGraphicSettings overrideSettings = new OverrideGraphicSettings();
+            overrideSettings.SetProjectionLineColor(color);
+
+            _doc.ActiveView.SetElementOverrides(modelCurve.Id, overrideSettings);
+        }
+
 
 
         private void SetupFloorParameters(Floor floor, string roomNameValue, string roomNumberValue, string levelRoomStringValue)
@@ -314,7 +356,6 @@ namespace AR_Finishings
             {
                 floorLevelParam.Set(levelRoomStringValue); // Установка значения параметра
             }
-
         }
     }
 }
